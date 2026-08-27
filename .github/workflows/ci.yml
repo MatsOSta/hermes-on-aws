@@ -1,0 +1,103 @@
+name: Static CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Bash syntax
+        run: bash -n infrastructure/aws/*.sh
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends shellcheck
+
+      - name: Run ShellCheck
+        run: shellcheck infrastructure/aws/*.sh
+
+  opentofu:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.11.5
+
+      - name: Check formatting
+        run: tofu fmt -check -recursive .
+
+      - name: Initialize AWS root without backend
+        run: tofu init -backend=false -input=false
+        working-directory: infrastructure/aws
+
+      - name: Validate AWS root
+        run: tofu validate
+        working-directory: infrastructure/aws
+
+      - name: Initialize state bootstrap root without backend
+        run: tofu init -backend=false -input=false
+        working-directory: infrastructure/bootstrap/state
+
+      - name: Validate state bootstrap root
+        run: tofu validate
+        working-directory: infrastructure/bootstrap/state
+
+  policy-as-code:
+    runs-on: ubuntu-latest
+    env:
+      CONFTEST_IMAGE: docker.io/openpolicyagent/conftest@sha256:b451f93ec386c25a4ed5aa4b835605dd4aee693374b619f5dc92374afcb6c296 # v0.68.2
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Verify Rego unit tests
+        run: |
+          docker run --rm \
+            --volume "$PWD:/project" \
+            --workdir /project \
+            "${CONFTEST_IMAGE}" \
+            verify --policy policy/terraform
+
+      - name: Enforce subnet policy against AWS root
+        run: |
+          docker run --rm \
+            --volume "$PWD:/project" \
+            --workdir /project \
+            "${CONFTEST_IMAGE}" \
+            test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
+
+  iac-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Block HIGH and CRITICAL IaC misconfigurations
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: config
+          scan-ref: infrastructure/
+          version: v0.73.0
+          severity: HIGH,CRITICAL
+          exit-code: 1

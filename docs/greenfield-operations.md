@@ -12,9 +12,14 @@ tofu fmt -check -recursive .
 tofu -chdir=infrastructure/greenfield init -backend=false -input=false
 tofu -chdir=infrastructure/greenfield validate
 tofu -chdir=infrastructure/greenfield test
+tofu -chdir=infrastructure/greenfield-state init -backend=false -input=false
+tofu -chdir=infrastructure/greenfield-state validate
+tofu -chdir=infrastructure/greenfield-state test
 conftest verify --policy policy/greenfield
 conftest test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
-trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/greenfield
+conftest verify --policy policy/greenfield-state
+conftest test --combine --policy policy/greenfield-state --parser hcl2 infrastructure/greenfield-state/*.tf
+trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/
 ```
 
 OpenTofu tests, the independent Rego layer, and Trivy enforce the
@@ -27,9 +32,17 @@ AMI parameter or any other AWS API.
 
 The following is a future operator procedure, not repository validation. Before
 starting, confirm the target AWS account, `eu-north-1`, state-bucket ownership,
-state lineage, credentials, and an unused opaque deployment namespace. Copy the
-example backend configuration to an untracked path and supply the actual bucket
-there. Never reuse `aws/terraform.tfstate`.
+state lineage, credentials, and an unused opaque deployment namespace. The
+independent `infrastructure/greenfield-state` root must first be handled as a
+separately reviewed operator exercise. Its bootstrap state starts local and
+must stay outside Git in approved encrypted operator storage until a separately
+reviewed migration or import procedure exists.
+
+Copy the host root's backend example to an untracked path and supply the
+deployment-dedicated bucket and KMS key ARN. Retain `eu-north-1`, `encrypt =
+true`, `use_lockfile = true`, and the opaque
+`deployments/hms-0123456789ab/terraform.tfstate` key. Never reuse
+`aws/terraform.tfstate` or another deployment's namespace.
 
 ```sh
 tofu -chdir=infrastructure/greenfield init -reconfigure -backend-config=/secure/path/backend.hcl
@@ -66,3 +79,8 @@ tofu -chdir=infrastructure/greenfield apply /secure/path/destroy.tfplan
 
 Never use automatic approval. Keep backend files, saved plans, state, and
 credentials outside this repository.
+
+Every future plan, apply, or destroy—including any state-foundation operation—
+requires Mats to approve the exact saved plan. The state bucket and KMS key have
+destruction protection; changing that is a separately reviewed break-glass
+procedure.

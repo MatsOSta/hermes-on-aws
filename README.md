@@ -20,8 +20,10 @@ parameterized deployment.
 - `infrastructure/greenfield`: an independent, static-tested template for one
   disposable deployment identified only by an opaque `hms-[a-f0-9]{12}` ID.
   It does not reuse the preserved roots, their names, or their state.
-- `policy/terraform`: Rego policy and unit tests enforcing the private-subnet
-  baseline.
+- `policy/terraform`: Rego policy and unit tests enforcing the preserved
+  private-subnet baseline.
+- `policy/greenfield`: independent Rego guardrails for the disposable host
+  network, metadata, SSH, and storage contracts.
 - `infrastructure/aws/*.sh`: reviewed host bootstrap and Hermes setup/runtime
   helpers using the existing immutable Hermes image digest.
 - `infrastructure/aws/hermes/SOUL.md` and `.hermes.md`: global Hermes identity
@@ -97,6 +99,8 @@ tofu -chdir=infrastructure/greenfield validate
 tofu -chdir=infrastructure/greenfield test
 conftest verify --policy policy/terraform
 conftest test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
+conftest verify --policy policy/greenfield
+conftest test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
 trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/
 ```
 

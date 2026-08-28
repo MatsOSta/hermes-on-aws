@@ -97,6 +97,22 @@ jobs:
             "${CONFTEST_IMAGE}" \
             test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
 
+      - name: Verify greenfield Rego unit tests
+        run: |
+          docker run --rm \
+            --volume "$PWD:/project" \
+            --workdir /project \
+            "${CONFTEST_IMAGE}" \
+            verify --policy policy/greenfield
+
+      - name: Enforce greenfield policy
+        run: |
+          docker run --rm \
+            --volume "$PWD:/project" \
+            --workdir /project \
+            "${CONFTEST_IMAGE}" \
+            test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
+
   iac-security:
     runs-on: ubuntu-latest
     steps:

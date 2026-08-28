@@ -1,0 +1,3 @@
+bucket = "replace-with-state-bucket"
+key    = "deployments/hms-0123456789ab/terraform.tfstate"
+region = "eu-north-1"

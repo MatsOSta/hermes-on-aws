@@ -59,6 +59,18 @@ jobs:
         run: tofu validate
         working-directory: infrastructure/bootstrap/state
 
+      - name: Initialize greenfield root without backend
+        run: tofu init -backend=false -input=false
+        working-directory: infrastructure/greenfield
+
+      - name: Validate greenfield root
+        run: tofu validate
+        working-directory: infrastructure/greenfield
+
+      - name: Run mocked greenfield tests
+        run: tofu test
+        working-directory: infrastructure/greenfield
+
   policy-as-code:
     runs-on: ubuntu-latest
     env:

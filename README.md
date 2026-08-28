@@ -17,6 +17,9 @@ parameterized deployment.
 - `infrastructure/bootstrap/state`: the independent bootstrap root that owns
   the versioned, encrypted, public-access-blocked S3 state bucket. It uses local
   AWS profile `platform-lab` and intentionally has no remote backend.
+- `infrastructure/greenfield`: an independent, static-tested template for one
+  disposable deployment identified only by an opaque `hms-[a-f0-9]{12}` ID.
+  It does not reuse the preserved roots, their names, or their state.
 - `policy/terraform`: Rego policy and unit tests enforcing the private-subnet
   baseline.
 - `infrastructure/aws/*.sh`: reviewed host bootstrap and Hermes setup/runtime
@@ -89,6 +92,9 @@ tofu -chdir=infrastructure/aws init -backend=false -input=false
 tofu -chdir=infrastructure/aws validate
 tofu -chdir=infrastructure/bootstrap/state init -backend=false -input=false
 tofu -chdir=infrastructure/bootstrap/state validate
+tofu -chdir=infrastructure/greenfield init -backend=false -input=false
+tofu -chdir=infrastructure/greenfield validate
+tofu -chdir=infrastructure/greenfield test
 conftest verify --policy policy/terraform
 conftest test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
 trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/
@@ -110,4 +116,3 @@ instance, its 30 GiB gp3 root volume, public IPv4 usage, S3 storage/versions and
 requests, and outbound data transfer. Systems Manager, image pulls, package
 repositories, and future AWS service changes may add usage or cost. Review
 current AWS pricing and live inventory before making budget assumptions.
-

@@ -20,10 +20,16 @@ parameterized deployment.
 - `infrastructure/greenfield`: an independent, static-tested template for one
   disposable deployment identified only by an opaque `hms-[a-f0-9]{12}` ID.
   It does not reuse the preserved roots, their names, or their state.
+- `infrastructure/greenfield-state`: an independent, static-tested local-state
+  bootstrap root for that deployment's dedicated versioned S3 bucket and
+  customer-managed KMS key. Its local bootstrap state must remain outside Git
+  in approved encrypted operator storage.
 - `policy/terraform`: Rego policy and unit tests enforcing the preserved
   private-subnet baseline.
 - `policy/greenfield`: independent Rego guardrails for the disposable host
   network, metadata, SSH, and storage contracts.
+- `policy/greenfield-state`: independent Rego guardrails for state isolation,
+  encryption, access controls, and destruction protection.
 - `infrastructure/aws/*.sh`: reviewed host bootstrap and Hermes setup/runtime
   helpers using the existing immutable Hermes image digest.
 - `infrastructure/aws/hermes/SOUL.md` and `.hermes.md`: global Hermes identity
@@ -97,10 +103,15 @@ tofu -chdir=infrastructure/bootstrap/state validate
 tofu -chdir=infrastructure/greenfield init -backend=false -input=false
 tofu -chdir=infrastructure/greenfield validate
 tofu -chdir=infrastructure/greenfield test
+tofu -chdir=infrastructure/greenfield-state init -backend=false -input=false
+tofu -chdir=infrastructure/greenfield-state validate
+tofu -chdir=infrastructure/greenfield-state test
 conftest verify --policy policy/terraform
 conftest test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
 conftest verify --policy policy/greenfield
 conftest test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
+conftest verify --policy policy/greenfield-state
+conftest test --combine --policy policy/greenfield-state --parser hcl2 infrastructure/greenfield-state/*.tf
 trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/
 ```
 

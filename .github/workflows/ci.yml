@@ -71,6 +71,18 @@ jobs:
         run: tofu test
         working-directory: infrastructure/greenfield
 
+      - name: Initialize greenfield state root without backend
+        run: tofu init -backend=false -input=false
+        working-directory: infrastructure/greenfield-state
+
+      - name: Validate greenfield state root
+        run: tofu validate
+        working-directory: infrastructure/greenfield-state
+
+      - name: Run mocked greenfield state tests
+        run: tofu test
+        working-directory: infrastructure/greenfield-state
+
   policy-as-code:
     runs-on: ubuntu-latest
     env:
@@ -112,6 +124,33 @@ jobs:
             --workdir /project \
             "${CONFTEST_IMAGE}" \
             test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
+
+      - name: Verify greenfield state Rego unit tests
+        run: |
+          docker run --rm \
+            --volume "$PWD:/project" \
+            --workdir /project \
+            "${CONFTEST_IMAGE}" \
+            verify --policy policy/greenfield-state
+
+      - name: Enforce greenfield state policy
+        run: |
+          docker run --rm \
+            --volume "$PWD:/project" \
+            --workdir /project \
+            "${CONFTEST_IMAGE}" \
+            test --combine --policy policy/greenfield-state --parser hcl2 infrastructure/greenfield-state/*.tf
+
+  secret-scanning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan repository for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
 
   iac-security:
     runs-on: ubuntu-latest

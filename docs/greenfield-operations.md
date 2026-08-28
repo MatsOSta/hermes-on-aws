@@ -12,12 +12,13 @@ tofu fmt -check -recursive .
 tofu -chdir=infrastructure/greenfield init -backend=false -input=false
 tofu -chdir=infrastructure/greenfield validate
 tofu -chdir=infrastructure/greenfield test
+conftest verify --policy policy/greenfield
+conftest test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
 trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/greenfield
 ```
 
-A follow-up PR will add an independent Rego policy layer and its Conftest
-commands. Until that checkpoint lands, OpenTofu tests and Trivy are the
-credential-free enforcement for this root.
+OpenTofu tests, the independent Rego layer, and Trivy enforce the
+credential-free contract before any later operator-led deployment.
 
 These checks require no AWS credentials. Mocked OpenTofu tests do not query the
 AMI parameter or any other AWS API.

@@ -19,9 +19,21 @@ die() {
 }
 
 require_credentials() {
-  if [[ -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
-    die "AWS credentials are not present in the environment. Run awslogin (or export AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN) and try again."
+  # Accept either static env vars (from awsexport) or a credential_process
+  # profile (e.g. platform-lab-tofu) that the AWS SDK resolves automatically.
+  if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    return 0
   fi
+  if [[ -n "${AWS_PROFILE:-}" ]]; then
+    # Verify the profile actually resolves credentials before proceeding.
+    if aws sts get-caller-identity --profile "${AWS_PROFILE}" >/dev/null 2>&1; then
+      return 0
+    fi
+    die "AWS_PROFILE is set to '${AWS_PROFILE}' but credentials could not be resolved. Run awslogin to refresh your SSO session."
+  fi
+  die "No AWS credentials found. Either:
+  1. Run: awslogin && awsexport   (static env vars, valid ~1 hour)
+  2. Or:  export AWS_PROFILE=platform-lab-tofu   (auto-refreshing via credential_process)"
 }
 
 require_tools() {

@@ -14,7 +14,8 @@ Commands:
   deploy <id>           Provision state foundation if needed, then host
   teardown <id>         Destroy the host only
   purge <id>            Destroy the host and state foundation
-  install <id>          Install Docker and Hermes through SSM
+  install <id>          Install Docker and pull Hermes image (step 1/3)
+  start-gateway <id>    Start the hermes-gateway container (step 3/3)
   start <id>            Start a stopped instance
   stop <id>             Stop a running instance
   ssm <id>              Open an interactive SSM session
@@ -33,7 +34,7 @@ case "${command_name}" in
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }
     printf 'hms-%s\n' "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
     ;;
-  deploy|teardown|purge|install|start|stop|ssm|logs)
+  deploy|teardown|purge|install|start-gateway|start|stop|ssm|logs)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }
     exec "${REPO_ROOT}/scripts/${command_name}.sh" "$2"
     ;;

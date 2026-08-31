@@ -11,6 +11,8 @@ require_credentials
 require_tools aws jq
 instance_id="$(instance_id_for "${deployment_id}")"
 [[ "$(ssm_ping_status "${instance_id}")" == "Online" ]] || die "instance ${instance_id} is not SSM Online"
+
+echo "Step 1/3: Installing Docker and pulling Hermes image..."
 command_id="$(send_ssm_command "${instance_id}" "Install Docker and pull pinned Hermes image" \
   'set -euo pipefail' \
   'dnf install -y docker' \
@@ -18,11 +20,10 @@ command_id="$(send_ssm_command "${instance_id}" "Install Docker and pull pinned 
   'install -d -m 0700 /var/lib/hermes' \
   "docker pull '${HERMES_IMAGE}'")"
 wait_and_print_ssm_command "${command_id}" "${instance_id}"
+
 cat <<EOF
 
-Docker is installed and the Hermes image is ready.
-
-Next: connect to the instance and run the full setup wizard:
+Step 2/3: Run the setup wizard.
 
   ./hermes.sh ssm ${deployment_id}
 
@@ -31,6 +32,10 @@ Then inside the session (as root):
   docker run --rm -it --volume /var/lib/hermes:/opt/data \\
     '${HERMES_IMAGE}' setup
 
-The wizard will configure the model, tools, and Telegram gateway.
-The gateway container starts automatically when setup completes.
+Configure model, tools, and Telegram gateway. Exit the SSM session when done.
+
+When ready, run step 3:
+
+  ./hermes.sh start-gateway ${deployment_id}
+
 EOF

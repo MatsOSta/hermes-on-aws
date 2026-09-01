@@ -1,4 +1,10 @@
 mock_provider "aws" {
+  mock_data "aws_iam_policy_document" {
+    defaults = {
+      json = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ec2.amazonaws.com\"},\"Action\":\"sts:AssumeRole\"}]}"
+    }
+  }
+
   mock_data "aws_ssm_parameter" {
     defaults = {
       value = "ami-mockedarm64"
@@ -42,6 +48,16 @@ run "creates_ssm_managed_arm64_host_and_encrypted_storage" {
   assert {
     condition     = aws_iam_role_policy_attachment.ssm.policy_arn == "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" && aws_instance.host.iam_instance_profile == aws_iam_instance_profile.host.name
     error_message = "Administration must use the dedicated profile with only the SSM core policy."
+  }
+
+  assert {
+    condition     = aws_iam_role.host.assume_role_policy == data.aws_iam_policy_document.host_assume_role.json
+    error_message = "The host role must use the reviewed structured EC2 trust policy document."
+  }
+
+  assert {
+    condition     = jsondecode(data.aws_iam_policy_document.host_assume_role.json).Version == "2012-10-17" && length(jsondecode(data.aws_iam_policy_document.host_assume_role.json).Statement) == 1 && jsondecode(data.aws_iam_policy_document.host_assume_role.json).Statement[0].Effect == "Allow" && jsondecode(data.aws_iam_policy_document.host_assume_role.json).Statement[0].Principal.Service == "ec2.amazonaws.com" && jsondecode(data.aws_iam_policy_document.host_assume_role.json).Statement[0].Action == "sts:AssumeRole"
+    error_message = "The host trust policy must contain only the reviewed EC2 sts:AssumeRole statement."
   }
 
   assert {

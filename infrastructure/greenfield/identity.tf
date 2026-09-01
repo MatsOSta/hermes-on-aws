@@ -1,16 +1,18 @@
-resource "aws_iam_role" "host" {
-  name = "${var.deployment_id}-host"
+data "aws_iam_policy_document" "host_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "ec2.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "host" {
+  name               = "${var.deployment_id}-host"
+  assume_role_policy = data.aws_iam_policy_document.host_assume_role.json
 
   tags = {
     Deployment = var.deployment_id

@@ -141,7 +141,7 @@ jobs:
             --volume "$PWD:/project" \
             --workdir /project \
             "${CONFTEST_IMAGE}" \
-            test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
+            test --combine --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
 
       - name: Verify greenfield state Rego unit tests
         run: |

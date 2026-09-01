@@ -111,7 +111,7 @@ tofu -chdir=infrastructure/greenfield-state test
 conftest verify --policy policy/terraform
 conftest test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
 conftest verify --policy policy/greenfield
-conftest test --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
+conftest test --combine --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
 conftest verify --policy policy/greenfield-state
 conftest test --combine --policy policy/greenfield-state --parser hcl2 infrastructure/greenfield-state/*.tf
 trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/

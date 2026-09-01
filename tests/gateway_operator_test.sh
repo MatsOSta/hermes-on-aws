@@ -31,7 +31,8 @@ success_is_gated() {
   (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'created and stable'* ]] &&
     [[ "${RUN_OUTPUT}" == *'Hermes gateway container is running'* ]] &&
     [[ "${RUN_CALLS}" == *'DELIVERED_REVIEWED_HELPER'* ]] &&
-    [[ "${RUN_CALLS}" == *'REMOTE_BASE64_CHECK'* ]]
+    [[ "${RUN_CALLS}" == *'REMOTE_BASE64_CHECK'* ]] &&
+    [[ "${RUN_CALLS}" == *'EXPECTED_VOLUME_FORWARDED'* ]]
 }
 
 failure_has_no_success() {
@@ -56,10 +57,16 @@ invalid_flag_is_local() {
   (( RUN_STATUS == 2 )) && [[ -z "${RUN_CALLS}" ]]
 }
 
+discovery_failure_has_no_ssm() {
+  run_operator volume-failure
+  (( RUN_STATUS != 0 )) && [[ "${RUN_CALLS}" != *'ssm send-command'* ]]
+}
+
 run_case 'success waits for terminal Success and remote stability' success_is_gated
 run_case 'terminal SSM failure cannot print success' failure_has_no_success
 run_case 'active SSM deadline cannot print success' active_timeout_has_no_success
 run_case '--recreate is delivered to reviewed helper' recreate_is_forwarded
 run_case 'invalid flag makes no AWS call' invalid_flag_is_local
+run_case 'volume discovery failure makes no SSM call' discovery_failure_has_no_ssm
 printf '1..%d\n# passed: %d, failed: %d\n' "$((passed + failed))" "${passed}" "${failed}"
 (( failed == 0 ))

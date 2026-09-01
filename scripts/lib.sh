@@ -143,6 +143,39 @@ instance_id_for_any_state() {
   printf '%s\n' "${instance_id}"
 }
 
+data_volume_id_for() {
+  local deployment_id="$1" instance_id="$2" response volume_id
+  validate_deployment_id "${deployment_id}"
+  [[ "${instance_id}" =~ ^i-[a-f0-9]+$ ]] || die "invalid EC2 instance ID: ${instance_id}"
+  require_tools jq
+
+  if ! response="$(aws --region "${AWS_REGION}" ec2 describe-volumes \
+    --filters "Name=tag:Deployment,Values=${deployment_id}" \
+      "Name=tag:Name,Values=${deployment_id}-data" \
+      "Name=attachment.instance-id,Values=${instance_id}" \
+    --output json)"; then
+    die "unable to discover reviewed data volume for ${deployment_id} on ${instance_id}"
+  fi
+  if ! volume_id="$(jq -er --arg instance_id "${instance_id}" '
+    if type == "object"
+      and (.Volumes | type == "array")
+      and (.Volumes | length == 1)
+      and (.Volumes[0] | type == "object")
+      and (.Volumes[0].VolumeId | type == "string")
+      and (.Volumes[0].VolumeId | test("^vol-[a-f0-9]{8,17}$"))
+      and (.Volumes[0].Attachments | type == "array")
+      and (.Volumes[0].Attachments | length == 1)
+      and (.Volumes[0].Attachments[0] | type == "object")
+      and (.Volumes[0].Attachments[0].InstanceId == $instance_id)
+      and (.Volumes[0].Attachments[0].State == "attached")
+    then .Volumes[0].VolumeId
+    else error("expected exactly one valid reviewed data volume") end
+  ' <<<"${response}")"; then
+    die "expected exactly one valid reviewed data volume for ${deployment_id} on ${instance_id}"
+  fi
+  printf '%s\n' "${volume_id}"
+}
+
 instance_state() {
   local instance_id="$1"
   aws --region "${AWS_REGION}" ec2 describe-instances --instance-ids "${instance_id}" \

@@ -82,7 +82,10 @@ socket, AWS/GitHub credentials, or a repository mount. The runtime publishes no
 inbound port. Do not weaken that boundary for convenience.
 
 All live Hermes configuration, credentials, conversations, and mutable state
-belong only in `/var/lib/hermes` on the host. Never print it, copy it into this
+belong only in `/var/lib/hermes` on the host, mounted from the deployment's
+reviewed dedicated EBS data volume. The operator resolves that volume by exact
+deployment/name/instance filters and the host resolves its Nitro device by EBS
+serial rather than a fixed NVMe name. Never print the data, copy it into this
 repository, or commit it. No AWS keys, Telegram tokens, model-provider secrets,
 OpenTofu state, plan files, `.env` files, or credentials belong in Git.
 
@@ -97,8 +100,11 @@ bash -n hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.s
 shellcheck hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 tests/operator_contract_test.sh
 tests/operator_safety_test.sh
+tests/volume_discovery_test.sh
+tests/install_operator_test.sh
 tests/destructive_preflight_test.sh
 tests/ssm_lifecycle_test.sh
+tests/mount_data_volume_test.sh
 tests/gateway_lifecycle_test.sh
 tests/gateway_operator_test.sh
 tofu fmt -check -recursive .
@@ -131,6 +137,10 @@ The state bucket has versioning, SSE-S3 encryption, public-access blocking, and
 backup and recovery procedure for remote OpenTofu state or `/var/lib/hermes`.
 There is no claim of restore readiness; establish and exercise recovery before
 depending on this extraction for disaster recovery.
+
+The current greenfield teardown destroys the dedicated Hermes data volume along
+with the host. Persistence across teardown is deliberately out of scope at this
+stage; treat teardown as destructive to all data on that volume.
 
 Expected cost-bearing resources include the continuously running `t4g.medium`
 instance, its 30 GiB gp3 root volume, public IPv4 usage, S3 storage/versions and

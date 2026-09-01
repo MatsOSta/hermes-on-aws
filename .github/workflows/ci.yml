@@ -45,7 +45,10 @@ jobs:
         run: tests/operator_contract_test.sh
 
       - name: Run credential-free operator regression tests
-        run: tests/operator_safety_test.sh
+        run: |
+          tests/operator_safety_test.sh
+          tests/volume_discovery_test.sh
+          tests/install_operator_test.sh
 
       - name: Run destructive preflight regression tests
         run: tests/destructive_preflight_test.sh
@@ -53,6 +56,7 @@ jobs:
       - name: Run SSM and gateway lifecycle regression tests
         run: |
           tests/ssm_lifecycle_test.sh
+          tests/mount_data_volume_test.sh
           tests/gateway_lifecycle_test.sh
           tests/gateway_operator_test.sh
 

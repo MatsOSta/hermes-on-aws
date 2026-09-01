@@ -5,6 +5,13 @@ printf '%s\n' "$*" >>"${MOCK_GATEWAY_AWS_CALLS}"
 args=" $* "
 if [[ "${args}" == *' sts get-caller-identity '* ]]; then echo 450895596262; exit 0; fi
 if [[ "${args}" == *' ec2 describe-instances '* ]]; then echo i-abc; exit 0; fi
+if [[ "${args}" == *' ec2 describe-volumes '* ]]; then
+  case "${MOCK_GATEWAY_AWS_MODE}" in
+    volume-failure) printf '{"Volumes":[]}\n' ;;
+    *) printf '{"Volumes":[{"VolumeId":"vol-0abc1234def567890","Attachments":[{"InstanceId":"i-abc","State":"attached"}]}]}\n' ;;
+  esac
+  exit 0
+fi
 if [[ "${args}" == *' ssm describe-instance-information '* ]]; then echo Online; exit 0; fi
 if [[ "${args}" == *' ssm send-command '* ]]; then
   parameters=''
@@ -27,6 +34,8 @@ if [[ "${args}" == *' ssm send-command '* ]]; then
   [[ "${parameters}" == *'command -v base64'* ]] || exit 87
   echo REMOTE_BASE64_CHECK >>"${MOCK_GATEWAY_AWS_CALLS}"
   [[ "${parameters}" != *'--recreate'* ]] || echo RECREATE_FORWARDED >>"${MOCK_GATEWAY_AWS_CALLS}"
+  [[ "${parameters}" == *"vol-0abc1234def567890"* ]] || exit 88
+  echo EXPECTED_VOLUME_FORWARDED >>"${MOCK_GATEWAY_AWS_CALLS}"
   echo cmd-123
   exit 0
 fi

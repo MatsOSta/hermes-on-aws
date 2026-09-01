@@ -2,9 +2,12 @@
 set -euo pipefail
 # shellcheck disable=SC1091
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
-require_credentials
-require_tools aws
-mapfile -t deployment_ids < <(discover_deployment_ids)
+aws_preflight
+if ! deployment_output="$(discover_deployment_ids)"; then
+  die "deployment discovery failed; resolve the AWS error above and retry"
+fi
+mapfile -t deployment_ids <<<"${deployment_output}"
+[[ -n "${deployment_output}" ]] || deployment_ids=()
 printf '%-17s %-12s %-8s %s\n' 'DEPLOYMENT' 'INSTANCE' 'SSM' 'SUMMARY'
 for deployment_id in "${deployment_ids[@]}"; do
   instance_id=""

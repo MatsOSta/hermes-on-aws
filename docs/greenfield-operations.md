@@ -30,9 +30,15 @@ AMI parameter or any other AWS API.
 
 ## Later reviewed deployment
 
-The following is a future operator procedure, not repository validation. Before
-starting, confirm the target AWS account, `eu-north-1`, state-bucket ownership,
-state lineage, credentials, and an unused opaque deployment namespace. The
+The following is a future operator procedure, not repository validation. The
+operator scripts verify credentials with STS, refuse any account other than
+`450895596262`, and force every AWS/OpenTofu operation to the reviewed
+`eu-north-1` region before discovery or mutation.
+When `AWS_PROFILE` is set, it is authoritative: the scripts discard exported
+static AWS credential variables so they cannot override the profile's
+`credential_process`. Without `AWS_PROFILE`, a complete static credential pair
+is verified through STS instead. Before starting, also confirm state-bucket
+ownership, state lineage, and an unused opaque deployment namespace. The
 independent `infrastructure/greenfield-state` root must first be handled as a
 separately reviewed operator exercise. Its bootstrap state starts local and
 must stay outside Git in approved encrypted operator storage until a separately

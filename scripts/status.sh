@@ -4,8 +4,8 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 deployment_id="${1:-}"
-require_credentials
-require_tools aws jq
+aws_preflight
+require_tools jq
 if [[ -z "${deployment_id}" ]]; then
   exec "${REPO_ROOT}/scripts/list.sh"
 fi

@@ -4,8 +4,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 deployment_id="${1:-}"
 validate_deployment_id "${deployment_id}"
-require_credentials
-require_tools aws
+aws_preflight
 instance_id="$(instance_id_for "${deployment_id}")"
 state="$(instance_state "${instance_id}")"
 if [[ "${state}" == "running" ]]; then echo "${instance_id} is already running."; exit 0; fi

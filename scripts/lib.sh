@@ -4,6 +4,7 @@
 set -euo pipefail
 
 readonly AWS_REGION="eu-north-1"
+readonly REVIEWED_AWS_ACCOUNT_ID="450895596262"
 readonly OPERATOR_ROOT="${HOME}/hermes-operator"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
@@ -18,22 +19,39 @@ die() {
   exit 1
 }
 
-require_credentials() {
-  # Accept either static env vars (from awsexport) or a credential_process
-  # profile (e.g. platform-lab-tofu) that the AWS SDK resolves automatically.
-  if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
-    return 0
-  fi
+AWS_ACCOUNT_ID=""
+
+aws_preflight() {
+  local credential_source caller_identity
+
+  require_tools aws
+
   if [[ -n "${AWS_PROFILE:-}" ]]; then
-    # Verify the profile actually resolves credentials before proceeding.
-    if aws sts get-caller-identity --profile "${AWS_PROFILE}" >/dev/null 2>&1; then
-      return 0
-    fi
-    die "AWS_PROFILE is set to '${AWS_PROFILE}' but credentials could not be resolved. Run awslogin to refresh your SSO session."
-  fi
-  die "No AWS credentials found. Either:
+    credential_source="AWS profile '${AWS_PROFILE}'"
+    export AWS_PROFILE
+    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_SECURITY_TOKEN \
+      AWS_CREDENTIAL_EXPIRATION
+  elif [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    credential_source="static environment credentials"
+  elif [[ -n "${AWS_ACCESS_KEY_ID:-}" || -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+    die "Incomplete static environment credentials. Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or unset them and export AWS_PROFILE."
+  else
+    die "No AWS credentials found. Either:
   1. Run: awslogin && awsexport   (static env vars, valid ~1 hour)
   2. Or:  export AWS_PROFILE=platform-lab-tofu   (auto-refreshing via credential_process)"
+  fi
+
+  if ! caller_identity="$(aws --region "${AWS_REGION}" sts get-caller-identity \
+    --query Account --output text 2>&1)"; then
+    die "Unable to verify ${credential_source} with AWS STS in ${AWS_REGION}.
+${caller_identity}
+Refresh or replace the selected credentials, then retry."
+  fi
+  [[ "${caller_identity}" =~ ^[0-9]{12}$ ]] || \
+    die "AWS STS returned an invalid account ID for ${credential_source}: ${caller_identity}"
+  [[ "${caller_identity}" == "${REVIEWED_AWS_ACCOUNT_ID}" ]] || \
+    die "Refusing AWS operation: ${credential_source} resolved to account ${caller_identity}; reviewed account is ${REVIEWED_AWS_ACCOUNT_ID} in region ${AWS_REGION}. Select the reviewed account and retry."
+  AWS_ACCOUNT_ID="${caller_identity}"
 }
 
 require_tools() {
@@ -55,7 +73,9 @@ operator_dir() {
 }
 
 account_id() {
-  aws --region "${AWS_REGION}" sts get-caller-identity --query Account --output text
+  [[ "${AWS_ACCOUNT_ID}" == "${REVIEWED_AWS_ACCOUNT_ID}" ]] || \
+    die "AWS preflight has not verified reviewed account ${REVIEWED_AWS_ACCOUNT_ID} in region ${AWS_REGION}"
+  printf '%s\n' "${AWS_ACCOUNT_ID}"
 }
 
 state_bucket_name() {
@@ -64,9 +84,16 @@ state_bucket_name() {
 }
 
 state_bucket_exists() {
-  local deployment_id="$1" bucket
+  local deployment_id="$1" bucket error
   bucket="$(state_bucket_name "${deployment_id}")"
-  aws --region "${AWS_REGION}" s3api head-bucket --bucket "${bucket}" >/dev/null 2>&1
+  if error="$(aws --region "${AWS_REGION}" s3api head-bucket --bucket "${bucket}" 2>&1)"; then
+    return 0
+  fi
+  if [[ "${error}" == *'(404)'* || "${error}" == *'Not Found'* || "${error}" == *'NoSuchBucket'* ]]; then
+    return 1
+  fi
+  die "Unable to check state bucket ${bucket}:
+${error}"
 }
 
 state_kms_key_arn() {
@@ -193,15 +220,16 @@ wait_and_print_ssm_command() {
 }
 
 discover_deployment_ids() {
-  local prefix bucket_ids instance_ids
+  local prefix bucket_names bucket_ids instance_tags instance_ids
   prefix="$(account_id)-${AWS_REGION}-hms-"
-  bucket_ids="$(aws --region "${AWS_REGION}" s3api list-buckets \
-    --query "Buckets[?starts_with(Name, \`${prefix}\`)].Name" --output text | \
-    tr '\t' '\n' | sed -nE "s/^${prefix}(hms-[a-f0-9]{12})-tofu-state$/\1/p")"
-  instance_ids="$(aws --region "${AWS_REGION}" ec2 describe-instances \
+  bucket_names="$(aws --region "${AWS_REGION}" s3api list-buckets \
+    --query "Buckets[?starts_with(Name, \`${prefix}\`)].Name" --output text)" || return
+  bucket_ids="$(tr '\t' '\n' <<<"${bucket_names}" | \
+    sed -nE "s/^${prefix}(hms-[a-f0-9]{12})-tofu-state$/\1/p")"
+  instance_tags="$(aws --region "${AWS_REGION}" ec2 describe-instances \
     --filters 'Name=tag-key,Values=Deployment' \
-    --query 'Reservations[].Instances[].Tags[?Key==`Deployment`].Value' --output text | \
-    tr '\t' '\n' | sed -nE '/^hms-[a-f0-9]{12}$/p')"
+    --query 'Reservations[].Instances[].Tags[?Key==`Deployment`].Value' --output text)" || return
+  instance_ids="$(tr '\t' '\n' <<<"${instance_tags}" | sed -nE '/^hms-[a-f0-9]{12}$/p')"
   printf '%s\n%s\n' "${bucket_ids}" "${instance_ids}" | sed '/^$/d' | sort -u
 }
 

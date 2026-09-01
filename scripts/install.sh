@@ -7,8 +7,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 readonly HERMES_IMAGE='nousresearch/hermes-agent@sha256:f5efd66dfdc0a434adf20af4030ac856eea6631405f7d44a827c6d7a76bf083e'
 deployment_id="${1:-}"
 validate_deployment_id "${deployment_id}"
-require_credentials
-require_tools aws jq
+aws_preflight
+require_tools jq
 instance_id="$(instance_id_for "${deployment_id}")"
 [[ "$(ssm_ping_status "${instance_id}")" == "Online" ]] || die "instance ${instance_id} is not SSM Online"
 

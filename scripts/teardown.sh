@@ -8,8 +8,6 @@ deployment_id="${1:-}"
 validate_deployment_id "${deployment_id}"
 aws_preflight
 require_tools tofu
-instance_id="$(instance_id_for "${deployment_id}")"
-echo "Host selected for teardown: ${instance_id}"
 work_dir="$(operator_dir "${deployment_id}")"
 mkdir -p -- "${work_dir}/tofu-data-host"
 prepare_host_backend "${deployment_id}"

@@ -7,11 +7,14 @@ readonly HERMES_CONTAINER_NAME='hermes-gateway'
 readonly HERMES_DATA_BIND='/var/lib/hermes:/opt/data'
 readonly STABILITY_SECONDS="${HERMES_GATEWAY_STABILITY_SECONDS:-3}"
 recreate=false
+expected_volume_id="${1:-}"
 
 if [[ "$(id -u)" != 0 ]]; then
   echo 'Hermes gateway runtime must be run as root.' >&2
   exit 1
 fi
+[[ "${expected_volume_id}" =~ ^vol-[a-f0-9]{8,17}$ ]] || { echo 'Expected volume ID must match ^vol-[a-f0-9]{8,17}$.' >&2; exit 2; }
+shift
 case "${1:-}" in
   '') ;;
   --recreate) recreate=true ;;
@@ -19,12 +22,51 @@ case "${1:-}" in
 esac
 (( $# <= 1 )) || { echo 'Gateway runtime accepts only --recreate.' >&2; exit 2; }
 [[ "${STABILITY_SECONDS}" =~ ^[0-9]+$ ]] || { echo 'Invalid stability interval.' >&2; exit 2; }
-command -v docker >/dev/null 2>&1 || { echo 'Docker is required.' >&2; exit 1; }
-docker info >/dev/null
+
+normalized_expected="${expected_volume_id//-/}"
+matches=()
+match_types=()
+lsblk_output="$(lsblk -nrpo NAME,TYPE,SERIAL)" || { echo 'Unable to enumerate block devices.' >&2; exit 1; }
+while read -r device_name device_type device_serial extra; do
+  [[ -n "${device_name:-}" ]] || continue
+  [[ -z "${extra:-}" ]] || { echo 'Unexpected lsblk device record.' >&2; exit 1; }
+  normalized_serial="${device_serial//-/}"
+  if [[ "${normalized_serial}" == "${normalized_expected}" ]]; then
+    matches+=("${device_name}")
+    match_types+=("${device_type}")
+  fi
+done <<<"${lsblk_output}"
+(( ${#matches[@]} == 1 )) || { echo "Expected exactly one whole device for ${expected_volume_id}." >&2; exit 1; }
+[[ "${match_types[0]}" == disk ]] || { echo "Expected ${expected_volume_id} to resolve to a whole device." >&2; exit 1; }
+expected_device="${matches[0]}"
+
+mount_record="$(findmnt -rn -M /var/lib/hermes -o SOURCE,FSTYPE,OPTIONS)" || {
+  echo '/var/lib/hermes is not an exact mountpoint.' >&2
+  exit 1
+}
+read -r mount_source mount_type mount_options extra <<<"${mount_record}"
+[[ -n "${mount_source:-}" && -n "${mount_type:-}" && -n "${mount_options:-}" && -z "${extra:-}" ]] || {
+  echo 'Malformed /var/lib/hermes mount information.' >&2
+  exit 1
+}
+canonical_source="$(readlink -f -- "${mount_source}")" || exit 1
+canonical_expected="$(readlink -f -- "${expected_device}")" || exit 1
+[[ "${canonical_source}" == "${canonical_expected}" ]] || { echo '/var/lib/hermes is backed by the wrong device.' >&2; exit 1; }
+[[ "${mount_type}" == xfs ]] || { echo '/var/lib/hermes is not XFS.' >&2; exit 1; }
+[[ ",${mount_options}," == *,nodev,* && ",${mount_options}," == *,nosuid,* ]] || {
+  echo '/var/lib/hermes lacks required nodev,nosuid mount options.' >&2
+  exit 1
+}
+[[ ",${mount_options}," != *,dev,* && ",${mount_options}," != *,suid,* ]] || {
+  echo '/var/lib/hermes has overriding dev or suid mount options.' >&2
+  exit 1
+}
 if [[ "$(stat -c '%F' -- /var/lib/hermes 2>/dev/null || true)" != directory ]]; then
   echo 'Hermes data directory /var/lib/hermes does not exist; run Hermes setup first.' >&2
   exit 1
 fi
+command -v docker >/dev/null 2>&1 || { echo 'Docker is required.' >&2; exit 1; }
+docker info >/dev/null
 
 inspect_container() {
   docker container inspect "${HERMES_CONTAINER_NAME}" >/dev/null

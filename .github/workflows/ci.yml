@@ -45,6 +45,9 @@ jobs:
       - name: Run credential-free operator regression tests
         run: tests/operator_safety_test.sh
 
+      - name: Run destructive preflight regression tests
+        run: tests/destructive_preflight_test.sh
+
   opentofu:
     runs-on: ubuntu-latest
     steps:

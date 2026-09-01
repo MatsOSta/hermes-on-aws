@@ -17,7 +17,13 @@ jobs:
           persist-credentials: false
 
       - name: Check Bash syntax
-        run: bash -n infrastructure/aws/*.sh
+        run: |
+          bash -n \
+            hermes.sh \
+            scripts/*.sh \
+            tests/*.sh \
+            tests/support/*.sh \
+            infrastructure/aws/*.sh
 
       - name: Install ShellCheck
         run: |
@@ -25,7 +31,19 @@ jobs:
           sudo apt-get install --no-install-recommends shellcheck
 
       - name: Run ShellCheck
-        run: shellcheck infrastructure/aws/*.sh
+        run: |
+          shellcheck \
+            hermes.sh \
+            scripts/*.sh \
+            tests/*.sh \
+            tests/support/*.sh \
+            infrastructure/aws/*.sh
+
+      - name: Verify operator dispatch and executable contract
+        run: tests/operator_contract_test.sh
+
+      - name: Run credential-free operator regression tests
+        run: tests/operator_safety_test.sh
 
   opentofu:
     runs-on: ubuntu-latest

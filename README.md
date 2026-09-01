@@ -19,7 +19,8 @@ parameterized deployment.
   AWS profile `platform-lab` and intentionally has no remote backend.
 - `infrastructure/greenfield`: an independent, static-tested template for one
   disposable deployment identified only by an opaque `hms-[a-f0-9]{12}` ID.
-  It does not reuse the preserved roots, their names, or their state.
+  It does not reuse the preserved roots, their names, or their state. The
+  repository-root `hermes.sh` is its primary routine operator interface.
 - `infrastructure/greenfield-state`: an independent, static-tested local-state
   bootstrap root for that deployment's dedicated versioned S3 bucket and
   customer-managed KMS key. Its local bootstrap state must remain outside Git
@@ -46,7 +47,7 @@ mounted and no published ports.
 ## Prerequisites
 
 Repository-only validation needs Bash and, for the full local CI equivalent,
-OpenTofu 1.11+, Docker, Conftest, ShellCheck, and Trivy. Any later operator-led
+OpenTofu 1.11.5, Docker, Conftest, ShellCheck, Gitleaks, and Trivy. Any later operator-led
 inspection of live state additionally requires explicit access to AWS account
 `450895596262`, region `eu-north-1`, and the existing backend. Host operations
 require an authorized Systems Manager session and root privileges.
@@ -54,6 +55,36 @@ require an authorized Systems Manager session and root privileges.
 Do not infer deployment readiness from these prerequisites. Before any live
 OpenTofu command, first confirm backend ownership, state lineage, provider
 versions, credentials, account/region, and the reviewed migration procedure.
+
+## Greenfield operator workflow
+
+For the disposable greenfield deployment, use `hermes.sh` rather than direct
+OpenTofu for routine work:
+
+```sh
+export AWS_PROFILE=platform-lab-tofu
+aws sso login --profile platform-lab
+./hermes.sh id
+./hermes.sh help
+```
+
+The wrapper covers `deploy`, `install`, interactive `ssm` setup,
+`start-gateway` (with explicit `--recreate` for replacement), `status`, `logs`,
+EC2 `start`/`stop`, `list`, `teardown`, and break-glass `purge`. Every AWS-backed
+command verifies through STS that credentials resolve to account
+`450895596262`; all operations are pinned to `eu-north-1`. When `AWS_PROFILE`
+is present, stale exported static credential variables are unset so they cannot
+override the profile. Refresh the SSO login when the profile session expires.
+`platform-lab` is the interactive SSO profile; `platform-lab-tofu` delegates to
+it through `credential_process` and remains the profile exported for operations.
+
+`deploy`, `teardown`, and `purge` show exact saved plans and preserve typed human
+approval boundaries. Teardown deletes the host and its disposable Hermes data
+volume while retaining the deployment's state foundation. Purge completes both
+plan preflights and requires two distinct confirmations before deleting the
+host/data and state foundation. See the
+[greenfield operator runbook](docs/greenfield-operations.md) for the exact
+workflow, SSM time bounds, mount contract, and recovery boundary.
 
 ## Migration brakes
 
@@ -96,6 +127,7 @@ See [SECURITY.md](SECURITY.md) for limitations and reporting guidance.
 Safe local checks do not need AWS credentials:
 
 ```sh
+export CONFTEST_IMAGE='docker.io/openpolicyagent/conftest@sha256:b451f93ec386c25a4ed5aa4b835605dd4aee693374b619f5dc92374afcb6c296'
 bash -n hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 shellcheck hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 tests/operator_contract_test.sh
@@ -118,17 +150,19 @@ tofu -chdir=infrastructure/greenfield test
 tofu -chdir=infrastructure/greenfield-state init -backend=false -input=false
 tofu -chdir=infrastructure/greenfield-state validate
 tofu -chdir=infrastructure/greenfield-state test
-conftest verify --policy policy/terraform
-conftest test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
-conftest verify --policy policy/greenfield
-conftest test --combine --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
-conftest verify --policy policy/greenfield-state
-conftest test --combine --policy policy/greenfield-state --parser hcl2 infrastructure/greenfield-state/*.tf
+docker run --rm --volume "$PWD:/project" --workdir /project "$CONFTEST_IMAGE" verify --policy policy/terraform
+docker run --rm --volume "$PWD:/project" --workdir /project "$CONFTEST_IMAGE" test --policy policy/terraform --parser hcl2 infrastructure/aws/*.tf
+docker run --rm --volume "$PWD:/project" --workdir /project "$CONFTEST_IMAGE" verify --policy policy/greenfield
+docker run --rm --volume "$PWD:/project" --workdir /project "$CONFTEST_IMAGE" test --combine --policy policy/greenfield --parser hcl2 infrastructure/greenfield/*.tf
+docker run --rm --volume "$PWD:/project" --workdir /project "$CONFTEST_IMAGE" verify --policy policy/greenfield-state
+docker run --rm --volume "$PWD:/project" --workdir /project "$CONFTEST_IMAGE" test --combine --policy policy/greenfield-state --parser hcl2 infrastructure/greenfield-state/*.tf
+gitleaks git --no-banner --redact --exit-code 1
 trivy config --severity HIGH,CRITICAL --exit-code 1 infrastructure/
 ```
 
 `init -backend=false` may download locked providers but must never contact the
-configured state backend. CI performs the same class of static checks.
+configured state backend. These commands mirror CI's checks; CI installs/pins
+the corresponding tool versions and actions.
 
 ## Backup, recovery, and cost
 

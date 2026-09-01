@@ -47,7 +47,7 @@ while read -r mode _object _stage path; do
   fi
 done < <(
   git -C "${REPO_ROOT}" ls-files -s -- \
-    hermes.sh 'scripts/*.sh' 'tests/*.sh' 'tests/support/*.sh' 'infrastructure/aws/*.sh'
+    hermes.sh 'scripts/*.sh' 'scripts/support/*.sh' 'tests/*.sh' 'tests/support/*.sh' 'infrastructure/aws/*.sh'
 )
 
 exit "${failed}"

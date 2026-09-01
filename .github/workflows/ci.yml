@@ -21,6 +21,7 @@ jobs:
           bash -n \
             hermes.sh \
             scripts/*.sh \
+            scripts/support/*.sh \
             tests/*.sh \
             tests/support/*.sh \
             infrastructure/aws/*.sh
@@ -35,6 +36,7 @@ jobs:
           shellcheck \
             hermes.sh \
             scripts/*.sh \
+            scripts/support/*.sh \
             tests/*.sh \
             tests/support/*.sh \
             infrastructure/aws/*.sh
@@ -47,6 +49,12 @@ jobs:
 
       - name: Run destructive preflight regression tests
         run: tests/destructive_preflight_test.sh
+
+      - name: Run SSM and gateway lifecycle regression tests
+        run: |
+          tests/ssm_lifecycle_test.sh
+          tests/gateway_lifecycle_test.sh
+          tests/gateway_operator_test.sh
 
   opentofu:
     runs-on: ubuntu-latest

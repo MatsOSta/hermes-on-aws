@@ -206,17 +206,88 @@ send_ssm_command() {
     --query 'Command.CommandId' --output text
 }
 
+ssm_poll_now() {
+  date +%s
+}
+
+ssm_poll_sleep() {
+  sleep "$1"
+}
+
+print_ssm_invocation() {
+  local invocation="$1"
+  jq -r '"Status: \(.Status)\nStandardOutput: |\n  \(.StandardOutputContent | gsub("\n"; "\n  "))\nStandardError: |\n  \(.StandardErrorContent | gsub("\n"; "\n  "))"' \
+    <<<"${invocation}"
+}
+
 wait_and_print_ssm_command() {
-  local command_id="$1" instance_id="$2" status
-  aws --region "${AWS_REGION}" ssm wait command-executed \
-    --command-id "${command_id}" --instance-id "${instance_id}" || true
-  aws --region "${AWS_REGION}" ssm get-command-invocation \
-    --command-id "${command_id}" --instance-id "${instance_id}" \
-    --query '{Status:Status,StandardOutput:StandardOutputContent,StandardError:StandardErrorContent}' \
-    --output yaml
-  status="$(aws --region "${AWS_REGION}" ssm get-command-invocation \
-    --command-id "${command_id}" --instance-id "${instance_id}" --query Status --output text)"
-  [[ "${status}" == "Success" ]] || die "SSM command ${command_id} finished with status ${status}"
+  local command_id="$1" instance_id="$2" deadline_seconds="${3:-600}" poll_interval="${4:-5}"
+  local started now invocation status aws_status aws_diagnostics error_file
+  [[ "${deadline_seconds}" =~ ^[0-9]+$ && "${poll_interval}" =~ ^[0-9]+$ ]] || \
+    die "SSM polling deadline and interval must be nonnegative integers"
+  started="$(ssm_poll_now)"
+
+  while true; do
+    error_file="$(mktemp)" || return $?
+    if invocation="$(aws --region "${AWS_REGION}" ssm get-command-invocation \
+      --command-id "${command_id}" --instance-id "${instance_id}" --output json 2>"${error_file}")"; then
+      rm -f -- "${error_file}"
+    else
+      aws_status=$?
+      aws_diagnostics="$(<"${error_file}")"
+      rm -f -- "${error_file}"
+      if [[ "${aws_diagnostics}" =~ (^|[^[:alnum:]_])InvocationDoesNotExist([^[:alnum:]_]|$) ]]; then
+        now="$(ssm_poll_now)"
+        if (( now - started >= deadline_seconds )); then
+          echo "Error: local deadline expired while SSM command ${command_id} on instance ${instance_id} was not yet visible; the command may still be pending or continuing remotely." >&2
+          echo "Follow up with: aws --region ${AWS_REGION} ssm get-command-invocation --command-id ${command_id} --instance-id ${instance_id}" >&2
+          return 124
+        fi
+        ssm_poll_sleep "${poll_interval}"
+        continue
+      fi
+      [[ -z "${aws_diagnostics}" ]] || printf '%s\n' "${aws_diagnostics}" >&2
+      return "${aws_status}"
+    fi
+    if ! status="$(jq -er '
+      if type == "object"
+        and (.Status | type == "string")
+        and (.Status | length > 0)
+        and (.StandardOutputContent | type == "string")
+        and (.StandardErrorContent | type == "string")
+      then .Status else error("malformed SSM invocation response") end
+    ' <<<"${invocation}")"; then
+      echo "Error: malformed SSM invocation response for command ${command_id} on instance ${instance_id}" >&2
+      return 1
+    fi
+
+    case "${status}" in
+      Success)
+        print_ssm_invocation "${invocation}"
+        return 0
+        ;;
+      Failed|TimedOut|Cancelled|Undeliverable|Terminated)
+        print_ssm_invocation "${invocation}"
+        echo "Error: SSM command ${command_id} on instance ${instance_id} reached terminal status ${status}." >&2
+        return 1
+        ;;
+      Pending|InProgress|Delayed|Cancelling)
+        now="$(ssm_poll_now)"
+        if (( now - started >= deadline_seconds )); then
+          print_ssm_invocation "${invocation}"
+          echo "Error: local deadline expired while SSM command ${command_id} on instance ${instance_id} was ${status}; remote work may still be continuing remotely." >&2
+          echo "Follow up with: aws --region ${AWS_REGION} ssm get-command-invocation --command-id ${command_id} --instance-id ${instance_id}" >&2
+          return 124
+        fi
+        ssm_poll_sleep "${poll_interval}"
+        ;;
+      *)
+        print_ssm_invocation "${invocation}"
+        echo "Error: unknown SSM status ${status} for command ${command_id} on instance ${instance_id}; failing closed." >&2
+        return 1
+        ;;
+    esac
+  done
 }
 
 discover_deployment_ids() {

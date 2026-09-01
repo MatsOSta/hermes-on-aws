@@ -6,7 +6,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'EOF'
-Usage: ./hermes.sh <command> [deployment-id]
+Usage: ./hermes.sh <command> [deployment-id] [options]
 
 Commands:
   help                  Print this usage
@@ -15,7 +15,8 @@ Commands:
   teardown <id>         Destroy the host only
   purge <id>            Destroy the host and state foundation
   install <id>          Install Docker and pull Hermes image (step 1/3)
-  start-gateway <id>    Start the hermes-gateway container (step 3/3)
+  start-gateway <id> [--recreate]
+                        Safely start/retain the gateway; explicitly replace with --recreate
   start <id>            Start a stopped instance
   stop <id>             Stop a running instance
   ssm <id>              Open an interactive SSM session
@@ -34,7 +35,12 @@ case "${command_name}" in
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }
     printf 'hms-%s\n' "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
     ;;
-  deploy|teardown|purge|install|start-gateway|start|stop|ssm|logs)
+  start-gateway)
+    [[ $# -ge 2 && $# -le 3 ]] || { usage >&2; exit 2; }
+    [[ $# -eq 2 || "$3" == '--recreate' ]] || { usage >&2; exit 2; }
+    exec "${REPO_ROOT}/scripts/start-gateway.sh" "$2" "${3:-}"
+    ;;
+  deploy|teardown|purge|install|start|stop|ssm|logs)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }
     exec "${REPO_ROOT}/scripts/${command_name}.sh" "$2"
     ;;

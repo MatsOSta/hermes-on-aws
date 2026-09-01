@@ -93,11 +93,14 @@ See [SECURITY.md](SECURITY.md) for limitations and reporting guidance.
 Safe local checks do not need AWS credentials:
 
 ```sh
-bash -n hermes.sh scripts/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
-shellcheck hermes.sh scripts/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
+bash -n hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
+shellcheck hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 tests/operator_contract_test.sh
 tests/operator_safety_test.sh
 tests/destructive_preflight_test.sh
+tests/ssm_lifecycle_test.sh
+tests/gateway_lifecycle_test.sh
+tests/gateway_operator_test.sh
 tofu fmt -check -recursive .
 tofu -chdir=infrastructure/aws init -backend=false -input=false
 tofu -chdir=infrastructure/aws validate

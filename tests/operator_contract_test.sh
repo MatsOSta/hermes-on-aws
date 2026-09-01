@@ -12,13 +12,15 @@ trap 'rm -rf -- "${TEST_TMP}"' EXIT
 
 make_fixture() {
   local fixture="$1"
-  mkdir -p -- "${fixture}/scripts" "${fixture}/tests/support" "${fixture}/infrastructure/aws"
+  mkdir -p -- "${fixture}/scripts/support" "${fixture}/tests/support" "${fixture}/infrastructure/aws"
   cp -- "${CHECKER}" "${fixture}/tests/support/check-operator-contract.sh"
   cp -- "${REPO_ROOT}/hermes.sh" "${fixture}/hermes.sh"
   cp -- "${REPO_ROOT}"/scripts/*.sh "${fixture}/scripts/"
+  cp -- "${REPO_ROOT}"/scripts/support/*.sh "${fixture}/scripts/support/"
   cp -- "${REPO_ROOT}"/infrastructure/aws/*.sh "${fixture}/infrastructure/aws/"
   printf '#!/usr/bin/env bash\n' >"${fixture}/tests/example_test.sh"
   chmod +x "${fixture}/hermes.sh" "${fixture}"/scripts/*.sh \
+    "${fixture}"/scripts/support/*.sh \
     "${fixture}"/tests/*.sh "${fixture}"/tests/support/*.sh \
     "${fixture}"/infrastructure/aws/*.sh
   git -C "${fixture}" init -q
@@ -75,8 +77,20 @@ checker_rejects_non_executable_entry_point() {
   [[ "${output}" == *'tracked shell entry point is not mode 100755: scripts/deploy.sh'* ]]
 }
 
+checker_rejects_non_executable_runtime_helper() {
+  local fixture="${TEST_TMP}/non-executable-runtime-helper" output
+  make_fixture "${fixture}"
+  chmod -x "${fixture}/scripts/support/run-hermes-gateway.sh"
+  git -C "${fixture}" add scripts/support/run-hermes-gateway.sh
+  if output="$("${CHECKER}" "${fixture}" 2>&1)"; then
+    return 1
+  fi
+  [[ "${output}" == *'tracked shell entry point is not mode 100755: scripts/support/run-hermes-gateway.sh'* ]]
+}
+
 checker_accepts_complete_contract
 checker_rejects_missing_dispatch_target
 checker_rejects_missing_status_dispatch_target
 checker_rejects_missing_list_dispatch_target
 checker_rejects_non_executable_entry_point
+checker_rejects_non_executable_runtime_helper

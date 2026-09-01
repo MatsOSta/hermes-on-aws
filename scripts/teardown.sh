@@ -6,8 +6,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 deployment_id="${1:-}"
 validate_deployment_id "${deployment_id}"
-require_credentials
-require_tools aws tofu
+aws_preflight
+require_tools tofu
 instance_id="$(instance_id_for "${deployment_id}")"
 echo "Host selected for teardown: ${instance_id}"
 work_dir="$(operator_dir "${deployment_id}")"

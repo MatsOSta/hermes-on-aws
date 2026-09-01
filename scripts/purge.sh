@@ -6,8 +6,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 deployment_id="${1:-}"
 validate_deployment_id "${deployment_id}"
-require_credentials
-require_tools aws tofu jq cp
+aws_preflight
+require_tools tofu jq cp
 work_dir="$(operator_dir "${deployment_id}")"
 state_file="${work_dir}/state-foundation.tfstate"
 mkdir -p -- "${work_dir}/tofu-data-host" "${work_dir}/tofu-data-state-purge"

@@ -97,6 +97,7 @@ bash -n hermes.sh scripts/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/
 shellcheck hermes.sh scripts/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 tests/operator_contract_test.sh
 tests/operator_safety_test.sh
+tests/destructive_preflight_test.sh
 tofu fmt -check -recursive .
 tofu -chdir=infrastructure/aws init -backend=false -input=false
 tofu -chdir=infrastructure/aws validate

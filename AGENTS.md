@@ -39,5 +39,8 @@ for scripts, `tofu fmt -check`, `tofu init -backend=false` plus `tofu validate`
 for each root, Rego unit/policy tests, and static IaC scanning. Report tools that
 are unavailable. Never substitute a live plan for static validation.
 
-Do not commit or push unless the user explicitly asks.
+Agents may create feature branches, commit verified changes, push those
+non-protected branches, and open or update pull requests without asking for a
+separate confirmation at each step. The user remains the approval boundary for
+merges: agents must not merge pull requests or push directly to `master`.
 

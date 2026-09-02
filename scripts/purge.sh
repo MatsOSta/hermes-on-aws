@@ -39,5 +39,6 @@ confirm_exact "BREAK-GLASS: apply the shown state-foundation destroy plan for ${
 
 TF_DATA_DIR="${work_dir}/tofu-data-host" tofu -chdir="${HOST_ROOT}" apply -input=false "${work_dir}/host-purge.tfplan"
 empty_versioned_bucket "$(state_bucket_name "${deployment_id}")"
-TF_DATA_DIR="${work_dir}/tofu-data-state-purge" tofu -chdir="${purge_root}" apply -input=false "${work_dir}/state-foundation-destroy.tfplan"
+TF_DATA_DIR="${work_dir}/tofu-data-state-purge" tofu -chdir="${purge_root}" apply -input=false \
+  -state="${state_file}" "${work_dir}/state-foundation-destroy.tfplan"
 echo "Host and state foundation for ${deployment_id} were purged. KMS deletion uses its configured waiting period."

@@ -18,13 +18,14 @@ else
   state_plan="${work_dir}/state-foundation.tfplan"
   TF_DATA_DIR="${work_dir}/tofu-data-state" tofu -chdir="${STATE_ROOT}" init -backend=false -input=false
   plan_show_confirm_apply "${deployment_id}" "${STATE_ROOT}" "${work_dir}/tofu-data-state" \
-    "${state_plan}" "state foundation creation" -state="${state_file}" -var="deployment_id=${deployment_id}"
+    "${state_plan}" "state foundation creation" "${state_file}" \
+    -state="${state_file}" -var="deployment_id=${deployment_id}"
 fi
 
 prepare_host_backend "${deployment_id}"
 host_plan="${work_dir}/host.tfplan"
 plan_show_confirm_apply "${deployment_id}" "${HOST_ROOT}" "${work_dir}/tofu-data-host" \
-  "${host_plan}" "host creation" -var="deployment_id=${deployment_id}"
+  "${host_plan}" "host creation" '' -var="deployment_id=${deployment_id}"
 instance_id="$(instance_id_for "${deployment_id}")"
 echo "Waiting for ${instance_id} to become SSM Online..."
 wait_for_ssm "${instance_id}" 300

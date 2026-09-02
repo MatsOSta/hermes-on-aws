@@ -132,6 +132,7 @@ bash -n hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.s
 shellcheck hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 tests/operator_contract_test.sh
 tests/operator_safety_test.sh
+tests/saved_plan_state_test.sh
 tests/volume_discovery_test.sh
 tests/install_operator_test.sh
 tests/destructive_preflight_test.sh

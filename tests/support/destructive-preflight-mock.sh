@@ -48,7 +48,7 @@ case "${MOCK_TOOL:?}: $*" in
       host-show:*'-chdir='*'/infrastructure/greenfield show '*'/host-'*'.tfplan') ;;
       state-show:*'-chdir='*'/greenfield-state-purge show '*'/state-foundation-destroy.tfplan') ;;
       host-apply:*'-chdir='*'/infrastructure/greenfield apply -input=false '*'/host-'*'.tfplan') ;;
-      state-apply:*'-chdir='*'/greenfield-state-purge apply -input=false '*'/state-foundation-destroy.tfplan') ;;
+      state-apply:*'-chdir='*'/greenfield-state-purge apply -input=false -state='*'/state-foundation.tfstate '*'/state-foundation-destroy.tfplan') ;;
       *)
         printf 'unexpected tofu invocation: %s\n' "$*" >&2
         exit 71

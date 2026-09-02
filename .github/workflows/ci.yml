@@ -47,6 +47,7 @@ jobs:
       - name: Run credential-free operator regression tests
         run: |
           tests/operator_safety_test.sh
+          tests/saved_plan_state_test.sh
           tests/volume_discovery_test.sh
           tests/install_operator_test.sh
 

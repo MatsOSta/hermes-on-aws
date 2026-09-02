@@ -221,12 +221,16 @@ prepare_host_backend() {
 }
 
 plan_show_confirm_apply() {
-  local deployment_id="$1" root="$2" data_dir="$3" plan_file="$4" action="$5"
-  shift 5
+  local deployment_id="$1" root="$2" data_dir="$3" plan_file="$4" action="$5" apply_state_file="$6"
+  local -a apply_options=()
+  shift 6
+  if [[ -n "${apply_state_file}" ]]; then
+    apply_options+=("-state=${apply_state_file}")
+  fi
   TF_DATA_DIR="${data_dir}" tofu -chdir="${root}" plan -input=false -out="${plan_file}" "$@"
   TF_DATA_DIR="${data_dir}" tofu -chdir="${root}" show "${plan_file}"
   confirm_exact "Approve ${action} for ${deployment_id}?" "${deployment_id}"
-  TF_DATA_DIR="${data_dir}" tofu -chdir="${root}" apply -input=false "${plan_file}"
+  TF_DATA_DIR="${data_dir}" tofu -chdir="${root}" apply -input=false "${apply_options[@]}" "${plan_file}"
 }
 
 send_ssm_command() {

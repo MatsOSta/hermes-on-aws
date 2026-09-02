@@ -12,5 +12,5 @@ work_dir="$(operator_dir "${deployment_id}")"
 mkdir -p -- "${work_dir}/tofu-data-host"
 prepare_host_backend "${deployment_id}"
 plan_show_confirm_apply "${deployment_id}" "${HOST_ROOT}" "${work_dir}/tofu-data-host" \
-  "${work_dir}/host-destroy.tfplan" "host destruction" -destroy -var="deployment_id=${deployment_id}"
+  "${work_dir}/host-destroy.tfplan" "host destruction" '' -destroy -var="deployment_id=${deployment_id}"
 echo "Host resources for ${deployment_id} were destroyed; the state foundation remains."

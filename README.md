@@ -62,13 +62,26 @@ For the disposable greenfield deployment, use `hermes.sh` rather than direct
 OpenTofu for routine work:
 
 ```sh
-export AWS_PROFILE=platform-lab-tofu
 aws login --profile platform-lab
+export AWS_PROFILE=platform-lab-tofu
 # Choose plain ID generation, or generation with an operator-local alias:
 ./hermes.sh id
 DEPLOYMENT_ID="$(./hermes.sh id --alias smoketest)"
 ./hermes.sh help
 ```
+
+`platform-lab` is the human, interactive AWS CLI v2 `aws login` profile. It is
+not an IAM Identity Center profile and does not use `aws sso login` or require
+`sso_start_url`/`sso_region`. `platform-lab-tofu` is the non-interactive
+credential-consumption profile exported for operator scripts and OpenTofu; its
+`credential_process` obtains temporary credentials from `platform-lab`. Refresh
+an expired login with the canonical `aws login --profile platform-lab` command.
+A local `awslogin` alias may abbreviate that command, but the documented workflow
+does not require it.
+
+These profiles support today's operator-assisted human workflow. Any future bot
+or unattended workload identity is a separate architecture and must not reuse
+or be inferred from this human login setup.
 
 Aliases are optional, operator-local labels. Create or manage them with
 `id --alias <alias>`, `alias set <alias> <hms-id>`, `alias list`, `alias rename
@@ -96,9 +109,10 @@ EC2 `start`/`stop`, `list`, `teardown`, and break-glass `purge`. Every AWS-backe
 command verifies through STS that credentials resolve to account
 `450895596262`; all operations are pinned to `eu-north-1`. When `AWS_PROFILE`
 is present, stale exported static credential variables are unset so they cannot
-override the profile. Refresh the SSO login when the profile session expires.
-`platform-lab` is the interactive SSO profile; `platform-lab-tofu` delegates to
-it through `credential_process` and remains the profile exported for operations.
+override the profile. Refresh the `aws login` session when the profile session
+expires. `platform-lab` is the interactive human login profile;
+`platform-lab-tofu` delegates to it through `credential_process` and remains the
+profile exported for operator scripts and OpenTofu.
 
 `deploy`, `teardown`, and `purge` show exact saved plans and preserve typed human
 approval boundaries. Teardown deletes the host and its disposable Hermes data

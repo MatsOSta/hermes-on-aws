@@ -433,12 +433,26 @@ discover_deployment_ids() {
 }
 
 empty_versioned_bucket() {
-  local bucket="$1" objects
+  local bucket="$1" objects object_count offset batch delete_response error_count
   while true; do
     objects="$(aws --region "${AWS_REGION}" s3api list-object-versions --bucket "${bucket}" \
-      --output json | jq -c '[.Versions[]?, .DeleteMarkers[]?] | map({Key: .Key, VersionId: .VersionId})')"
+      --output json | \
+      jq -ce 'if type == "object" then [.Versions[]?, .DeleteMarkers[]?] | map({Key: .Key, VersionId: .VersionId}) else error("malformed list-object-versions response") end')"
     [[ "${objects}" != "[]" ]] || break
-    aws --region "${AWS_REGION}" s3api delete-objects --bucket "${bucket}" \
-      --delete "$(jq -cn --argjson objects "${objects}" '{Objects: $objects, Quiet: true}')" >/dev/null
+    object_count="$(jq -er 'length' <<<"${objects}")"
+    for (( offset = 0; offset < object_count; offset += 1000 )); do
+      batch="$(jq -ce --argjson offset "${offset}" '.[$offset:$offset + 1000]' <<<"${objects}")"
+      delete_response="$(aws --region "${AWS_REGION}" s3api delete-objects --bucket "${bucket}" \
+        --delete "$(jq -cn --argjson objects "${batch}" '{Objects: $objects, Quiet: true}')")"
+      if ! error_count="$(jq -er '
+        if type == "object" and ((.Errors // []) | type == "array")
+        then (.Errors // []) | length
+        else error("malformed delete-objects response") end
+      ' <<<"${delete_response}")"; then
+        die "S3 returned a malformed delete-objects response for ${bucket}; state foundation was not destroyed"
+      fi
+      (( error_count == 0 )) || \
+        die "S3 reported ${error_count} object-version deletion error(s) for ${bucket}; state foundation was not destroyed"
+    done
   done
 }

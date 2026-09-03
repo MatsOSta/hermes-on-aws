@@ -170,6 +170,38 @@ wrong_account_blocks_purge_and_teardown() {
   done
 }
 
+bucket_versions_are_deleted_in_batches_of_at_most_1000() {
+  local case_dir status
+  case_dir="$(setup_case oversized-bucket-delete)"
+  : >"${case_dir}/home/hermes-operator/${DEPLOYMENT_ID}/state-foundation.tfstate"
+  run_operator "${case_dir}" purge $'destroy-host-hms-abcdef123456\npurge-state-hms-abcdef123456\n' oversized-bucket-delete || status=$?
+  (( ${status:-0} == 0 )) &&
+    [[ "$(grep -c '^bucket-delete$' "${case_dir}/events.log")" -eq 2 ]] &&
+    ! grep -q '^oversized-bucket-delete$' "${case_dir}/events.log"
+}
+
+bucket_delete_errors_abort_before_state_apply() {
+  local case_dir status
+  case_dir="$(setup_case bucket-delete-errors)"
+  : >"${case_dir}/home/hermes-operator/${DEPLOYMENT_ID}/state-foundation.tfstate"
+  status=0
+  run_operator "${case_dir}" purge $'destroy-host-hms-abcdef123456\npurge-state-hms-abcdef123456\n' bucket-delete-errors || status=$?
+  (( status != 0 )) &&
+    grep -q '^bucket-delete$' "${case_dir}/events.log" &&
+    ! grep -q '^state-apply$' "${case_dir}/events.log"
+}
+
+malformed_bucket_response_aborts_before_state_apply() {
+  local response case_dir status
+  for response in malformed-bucket-list malformed-bucket-delete; do
+    case_dir="$(setup_case "${response}")"
+    : >"${case_dir}/home/hermes-operator/${DEPLOYMENT_ID}/state-foundation.tfstate"
+    status=0
+    run_operator "${case_dir}" purge $'destroy-host-hms-abcdef123456\npurge-state-hms-abcdef123456\n' "${response}" || status=$?
+    (( status != 0 )) && ! grep -q '^state-apply$' "${case_dir}/events.log" || return 1
+  done
+}
+
 run_named_case() {
   local name="$1"
   if "${name}"; then pass "${name}"; else fail "${name}"; fi
@@ -188,7 +220,10 @@ else
     early_pre_state_show_failure_does_not_hang_fifo \
     teardown_does_not_discover_ec2 \
     teardown_plan_or_show_failure_aborts_before_apply \
-    wrong_account_blocks_purge_and_teardown; do
+    wrong_account_blocks_purge_and_teardown \
+    bucket_versions_are_deleted_in_batches_of_at_most_1000 \
+    bucket_delete_errors_abort_before_state_apply \
+    malformed_bucket_response_aborts_before_state_apply; do
     run_named_case "${name}"
   done
 fi

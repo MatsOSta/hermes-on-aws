@@ -16,15 +16,32 @@ case "${MOCK_TOOL:?}: $*" in
     ;;
   aws:\ --region\ eu-north-1\ s3api\ list-object-versions\ --bucket\ *)
     printf 'bucket-list\n' >>"${MOCK_LOG:?}"
-    if [[ ! -f "${MOCK_CASE_DIR:?}/bucket-listed" ]]; then
+    if [[ "${MOCK_FAIL_EVENT:-}" == 'malformed-bucket-list' ]]; then
+      printf '[]\n'
+    elif [[ ! -f "${MOCK_CASE_DIR:?}/bucket-listed" ]]; then
       : >"${MOCK_CASE_DIR}/bucket-listed"
-      printf '{"Versions":[{"Key":"state","VersionId":"one"}]}\n'
+      if [[ "${MOCK_FAIL_EVENT:-}" == 'oversized-bucket-delete' ]]; then
+        jq -cn '[range(1001) | {Key:"state", VersionId:(. | tostring)}] | {Versions:.}'
+      else
+        printf '{"Versions":[{"Key":"state","VersionId":"one"}]}\n'
+      fi
     else
       printf '{"Versions":[]}\n'
     fi
     ;;
   aws:\ --region\ eu-north-1\ s3api\ delete-objects\ --bucket\ *)
     printf 'bucket-delete\n' >>"${MOCK_LOG:?}"
+    delete_payload="${*: -1}"
+    if (( $(jq '.Objects | length' <<<"${delete_payload}") > 1000 )); then
+      printf 'oversized-bucket-delete\n' >>"${MOCK_LOG:?}"
+      exit 73
+    elif [[ "${MOCK_FAIL_EVENT:-}" == 'malformed-bucket-delete' ]]; then
+      printf '[]\n'
+    elif [[ "${MOCK_FAIL_EVENT:-}" == 'bucket-delete-errors' ]]; then
+      printf '{"Errors":[{"Key":"state","VersionId":"one","Code":"AccessDenied","Message":"denied"}]}\n'
+    else
+      printf '{"Deleted":[{"Key":"state","VersionId":"one"}]}\n'
+    fi
     ;;
   tofu:*)
     operation=''

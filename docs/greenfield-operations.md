@@ -12,17 +12,18 @@ scripts force AWS CLI and OpenTofu operations to `eu-north-1` and call STS
 before discovery or mutation. They fail closed unless the selected credentials
 resolve to reviewed account `450895596262`.
 
-The preferred credential source is the auto-refreshing operator profile:
+The preferred credential source is the auto-refreshing operator profile. Local
+alias management additionally requires Python 3:
 
 ```sh
+aws login --profile platform-lab
 export AWS_PROFILE=platform-lab-tofu
-aws sso login --profile platform-lab
 ```
 
-`platform-lab` is the interactive SSO profile. The exported
+`platform-lab` is the interactive AWS CLI v2 `aws login` profile. The exported
 `platform-lab-tofu` profile delegates to it through `credential_process` and is
-the profile used for operator commands. Refresh the SSO login when STS reports
-an expired session. When `AWS_PROFILE`
+the profile used for operator commands. Refresh with `aws login --profile
+platform-lab` when STS reports an expired session. When `AWS_PROFILE`
 is set, it is authoritative: the scripts unset exported access key, secret key,
 session token, security token, and credential-expiration variables before
 calling AWS. This prevents stale exported credentials from taking precedence
@@ -37,12 +38,46 @@ that directory as sensitive operator storage.
 
 ## Routine workflow
 
-Generate an opaque ID, record it, and use that same ID throughout:
+Generate an opaque ID and optionally assign a local, non-identifying alias:
 
 ```sh
-./hermes.sh id
-export DEPLOYMENT_ID=hms-0123456789ab
+DEPLOYMENT_ID="$(./hermes.sh id --alias smoketest)"
+./hermes.sh deploy smoketest
 ```
+
+`id --alias` securely records the mapping before printing only the new opaque
+ID on stdout. Existing deployments can be labeled and labels managed without
+changing any deployment resource:
+
+```sh
+./hermes.sh alias set smoketest hms-0123456789ab
+./hermes.sh alias list
+./hermes.sh alias rename smoketest validation
+./hermes.sh alias remove validation
+```
+
+Aliases are 1-63 lowercase letters/digits with interior hyphens; opaque-ID
+shapes are reserved. Each alias and canonical ID may appear only once. The
+potentially sensitive registry stays at `~/hermes-operator/aliases`, beneath an
+owner-only directory, and is protected by owner-only permissions, validation,
+locking, and atomic replacement. Symlinks, unsafe ownership or permissions,
+and malformed or ambiguous records fail before an alias-dependent `list` or
+`status` operation calls AWS. Commands given a canonical opaque ID intentionally
+bypass alias lookup, preserving a recovery path when the local registry is
+missing or needs repair.
+For an existing operator directory that predates this requirement, first
+inspect its ownership and contents, then run
+`chmod 700 -- ~/hermes-operator`. The wrapper fails closed and prints this
+migration command; it never changes existing permissions silently.
+
+All deployment-targeting commands accept an alias or opaque ID. Resolution
+happens in `hermes.sh` before command dispatch, so AWS tags/names, backend keys,
+OpenTofu variables/plans/state, SSM commands, remote logs, and runtime data see
+only the canonical ID. Saved-plan prompts and both destruction confirmations
+also remain canonical. `list` and status-all add an explicit alias column when
+local mappings exist; single status shows both values. Removing or renaming an
+alias changes only this workstation. Preserve the printed opaque ID: a missing
+registry on another workstation never blocks direct-ID recovery or operation.
 
 Provision the dedicated state foundation and then the host:
 

@@ -4,12 +4,16 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 deployment_id="${1:-}"
-aws_preflight
-require_tools jq
 if [[ -z "${deployment_id}" ]]; then
   exec "${REPO_ROOT}/scripts/list.sh"
 fi
+deployment_alias="${HERMES_LOCAL_DEPLOYMENT_ALIAS:-}"
 validate_deployment_id "${deployment_id}"
+if [[ -n "${deployment_alias}" ]]; then
+  validate_deployment_alias "${deployment_alias}"
+fi
+aws_preflight
+require_tools jq
 instance_id="$(instance_id_for_any_state "${deployment_id}")"
 state="$(instance_state "${instance_id}")"
 ping="$(ssm_ping_status "${instance_id}")"
@@ -27,5 +31,6 @@ if [[ "${ping}" == "Online" ]]; then
   docker_status="${docker_status:-unknown}"
   container_status="${container_status:-unknown}"
 fi
+[[ -z "${deployment_alias}" ]] || printf 'Alias:            %s\n' "${deployment_alias}"
 printf 'Deployment:       %s\nInstance ID:      %s\nInstance state:   %s\nSSM ping:         %s\nDocker:           %s\nHermes gateway:   %s\n' \
   "${deployment_id}" "${instance_id}" "${state}" "${ping}" "${docker_status}" "${container_status}"

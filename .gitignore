@@ -20,6 +20,10 @@ override.tf.json
 credentials
 secrets/
 
+# Python validation artifacts
+__pycache__/
+*.py[cod]
+
 # Editor and operating-system files
 .DS_Store
 .idea/

@@ -26,6 +26,9 @@ jobs:
             tests/support/*.sh \
             infrastructure/aws/*.sh
 
+      - name: Check Python helper syntax
+        run: python3 -m py_compile scripts/support/deployment-aliases.py
+
       - name: Install ShellCheck
         run: |
           sudo apt-get update
@@ -46,6 +49,7 @@ jobs:
 
       - name: Run credential-free operator regression tests
         run: |
+          tests/deployment_alias_test.sh
           tests/operator_safety_test.sh
           tests/saved_plan_state_test.sh
           tests/volume_discovery_test.sh

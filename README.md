@@ -46,7 +46,7 @@ mounted and no published ports.
 
 ## Prerequisites
 
-Repository-only validation needs Bash and, for the full local CI equivalent,
+Repository-only validation needs Bash and Python 3 and, for the full local CI equivalent,
 OpenTofu 1.11.5, Docker, Conftest, ShellCheck, Gitleaks, and Trivy. Any later operator-led
 inspection of live state additionally requires explicit access to AWS account
 `450895596262`, region `eu-north-1`, and the existing backend. Host operations
@@ -63,10 +63,32 @@ OpenTofu for routine work:
 
 ```sh
 export AWS_PROFILE=platform-lab-tofu
-aws sso login --profile platform-lab
+aws login --profile platform-lab
+# Choose plain ID generation, or generation with an operator-local alias:
 ./hermes.sh id
+DEPLOYMENT_ID="$(./hermes.sh id --alias smoketest)"
 ./hermes.sh help
 ```
+
+Aliases are optional, operator-local labels. Create or manage them with
+`id --alias <alias>`, `alias set <alias> <hms-id>`, `alias list`, `alias rename
+<old> <new>`, and `alias remove <alias>`. Every deployment-targeting command
+accepts either the registered alias or its opaque ID, but resolves locally
+before dispatch; AWS, OpenTofu, SSM, saved plans, and destructive confirmations
+continue to receive only the canonical `hms-[a-f0-9]{12}` ID. `list` and
+deployment-wide `status` show both values when aliases exist.
+
+The registry is potentially sensitive metadata stored only at
+`~/hermes-operator/aliases`, with owner-only directory/file permissions and
+atomic locked updates. It must never be copied into Git or cloud state. An
+invalid, ambiguous, symlinked, or insecure registry fails closed before an
+alias-dependent `list` or `status` call reaches AWS. Commands given a canonical
+opaque ID intentionally bypass alias lookup, so retain that ID for recovery and
+use on another workstation even when the registry is missing or needs repair.
+If an existing `~/hermes-operator` is rejected because it predates the
+owner-only requirement, inspect its ownership and contents, then run
+`chmod 700 -- ~/hermes-operator`; the wrapper never changes existing permissions
+silently.
 
 The wrapper covers `deploy`, `install`, interactive `ssm` setup,
 `start-gateway` (with explicit `--recreate` for replacement), `status`, `logs`,
@@ -130,7 +152,9 @@ Safe local checks do not need AWS credentials:
 export CONFTEST_IMAGE='docker.io/openpolicyagent/conftest@sha256:b451f93ec386c25a4ed5aa4b835605dd4aee693374b619f5dc92374afcb6c296'
 bash -n hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 shellcheck hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
+python3 -m py_compile scripts/support/deployment-aliases.py
 tests/operator_contract_test.sh
+tests/deployment_alias_test.sh
 tests/operator_safety_test.sh
 tests/saved_plan_state_test.sh
 tests/volume_discovery_test.sh

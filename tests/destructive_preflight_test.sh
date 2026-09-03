@@ -191,6 +191,15 @@ bucket_delete_errors_abort_before_state_apply() {
     ! grep -q '^state-apply$' "${case_dir}/events.log"
 }
 
+empty_quiet_delete_response_allows_state_apply() {
+  local case_dir
+  case_dir="$(setup_case empty-bucket-delete-response)"
+  : >"${case_dir}/home/hermes-operator/${DEPLOYMENT_ID}/state-foundation.tfstate"
+  run_operator "${case_dir}" purge $'destroy-host-hms-abcdef123456\npurge-state-hms-abcdef123456\n' empty-bucket-delete-response &&
+    grep -q '^bucket-delete$' "${case_dir}/events.log" &&
+    grep -q '^state-apply$' "${case_dir}/events.log"
+}
+
 malformed_bucket_response_aborts_before_state_apply() {
   local response case_dir status
   for response in malformed-bucket-list malformed-bucket-delete; do
@@ -223,6 +232,7 @@ else
     wrong_account_blocks_purge_and_teardown \
     bucket_versions_are_deleted_in_batches_of_at_most_1000 \
     bucket_delete_errors_abort_before_state_apply \
+    empty_quiet_delete_response_allows_state_apply \
     malformed_bucket_response_aborts_before_state_apply; do
     run_named_case "${name}"
   done

@@ -39,6 +39,8 @@ case "${MOCK_TOOL:?}: $*" in
       printf '[]\n'
     elif [[ "${MOCK_FAIL_EVENT:-}" == 'bucket-delete-errors' ]]; then
       printf '{"Errors":[{"Key":"state","VersionId":"one","Code":"AccessDenied","Message":"denied"}]}\n'
+    elif [[ "${MOCK_FAIL_EVENT:-}" == 'empty-bucket-delete-response' ]]; then
+      :
     else
       printf '{"Deleted":[{"Key":"state","VersionId":"one"}]}\n'
     fi

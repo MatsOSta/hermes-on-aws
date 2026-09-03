@@ -444,7 +444,8 @@ empty_versioned_bucket() {
     for (( offset = 0; offset < object_count; offset += 1000 )); do
       batch="$(jq -ce --argjson offset "${offset}" '.[$offset:$offset + 1000]' <<<"${objects}")"
       delete_response="$(aws --region "${AWS_REGION}" s3api delete-objects --bucket "${bucket}" \
-        --delete "$(jq -cn --argjson objects "${batch}" '{Objects: $objects, Quiet: true}')")"
+        --delete "$(jq -cn --argjson objects "${batch}" '{Objects: $objects, Quiet: true}')" --output json)"
+      [[ -n "${delete_response}" ]] || delete_response='{}'
       if ! error_count="$(jq -er '
         if type == "object" and ((.Errors // []) | type == "array")
         then (.Errors // []) | length

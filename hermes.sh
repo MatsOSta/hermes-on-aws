@@ -3,6 +3,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/scripts/lib.sh"
 
 usage() {
   cat <<'EOF'
@@ -10,7 +12,11 @@ Usage: ./hermes.sh <command> [deployment-id] [options]
 
 Commands:
   help                  Print this usage
-  id                    Generate a new hms-[a-f0-9]{12} deployment ID
+  id [--alias <alias>]  Generate an ID; optionally register its local alias
+  alias set <alias> <id>
+  alias list
+  alias rename <old> <new>
+  alias remove <alias>  Manage operator-local deployment aliases
   deploy <id>           Provision state foundation if needed, then host
   teardown <id>         Destroy the host only
   purge <id>            Destroy the host and state foundation
@@ -32,21 +38,44 @@ case "${command_name}" in
     usage
     ;;
   id)
-    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
-    printf 'hms-%s\n' "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
+    [[ $# -eq 1 || ( $# -eq 3 && "$2" == '--alias' ) ]] || { usage >&2; exit 2; }
+    generated_id="hms-$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
+    [[ $# -eq 1 ]] || alias_set "$3" "${generated_id}"
+    printf '%s\n' "${generated_id}"
+    ;;
+  alias)
+    subcommand="${2:-}"
+    case "${subcommand}" in
+      set) [[ $# -eq 4 ]] || { usage >&2; exit 2; }; alias_set "$3" "$4" ;;
+      list) [[ $# -eq 2 ]] || { usage >&2; exit 2; }; alias_list ;;
+      rename) [[ $# -eq 4 ]] || { usage >&2; exit 2; }; alias_rename "$3" "$4" ;;
+      remove) [[ $# -eq 3 ]] || { usage >&2; exit 2; }; alias_remove "$3" ;;
+      *) usage >&2; exit 2 ;;
+    esac
     ;;
   start-gateway)
     [[ $# -ge 2 && $# -le 3 ]] || { usage >&2; exit 2; }
     [[ $# -eq 2 || "$3" == '--recreate' ]] || { usage >&2; exit 2; }
-    exec "${REPO_ROOT}/scripts/start-gateway.sh" "$2" "${3:-}"
+    deployment_id="$(resolve_deployment_target "$2")"
+    exec "${REPO_ROOT}/scripts/start-gateway.sh" "${deployment_id}" "${3:-}"
     ;;
   deploy|teardown|purge|install|start|stop|ssm|logs)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }
-    exec "${REPO_ROOT}/scripts/${command_name}.sh" "$2"
+    deployment_id="$(resolve_deployment_target "$2")"
+    exec "${REPO_ROOT}/scripts/${command_name}.sh" "${deployment_id}"
     ;;
   status)
     [[ $# -le 2 ]] || { usage >&2; exit 2; }
-    exec "${REPO_ROOT}/scripts/status.sh" "${2:-}"
+    if [[ $# -eq 2 ]]; then
+      deployment_id="$(resolve_deployment_target "$2")"
+      deployment_alias=''
+      if [[ ! "$2" =~ ^hms-[a-f0-9]{12}$ ]]; then
+        deployment_alias="$2"
+      fi
+      HERMES_LOCAL_DEPLOYMENT_ALIAS="${deployment_alias}" \
+        exec "${REPO_ROOT}/scripts/status.sh" "${deployment_id}"
+    fi
+    exec "${REPO_ROOT}/scripts/status.sh" ''
     ;;
   list)
     [[ $# -eq 1 ]] || { usage >&2; exit 2; }

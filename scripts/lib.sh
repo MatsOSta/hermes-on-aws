@@ -8,6 +8,7 @@ readonly REVIEWED_AWS_ACCOUNT_ID="450895596262"
 readonly OPERATOR_ROOT="${HOME}/hermes-operator"
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly REPO_ROOT
+readonly ALIAS_HELPER="${REPO_ROOT}/scripts/support/deployment-aliases.py"
 # These constants are consumed by scripts that source this library.
 # shellcheck disable=SC2034
 readonly STATE_ROOT="${REPO_ROOT}/infrastructure/greenfield-state"
@@ -64,6 +65,96 @@ require_tools() {
 validate_deployment_id() {
   local deployment_id="${1:-}"
   [[ "${deployment_id}" =~ ^hms-[a-f0-9]{12}$ ]] || die "deployment ID must match ^hms-[a-f0-9]{12}$"
+}
+
+validate_deployment_alias() {
+  local deployment_alias="${1:-}"
+  [[ "${deployment_alias}" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || \
+    die 'deployment alias must be 1-63 lowercase letters, digits, or interior hyphens'
+  [[ ! "${deployment_alias}" =~ ^hms-[a-f0-9]{12}$ ]] || \
+    die 'deployment aliases may not use the opaque deployment-ID namespace'
+}
+
+declare -ag DEPLOYMENT_ALIASES=()
+declare -ag ALIAS_DEPLOYMENT_IDS=()
+
+load_alias_registry() {
+  local deployment_alias deployment_id index snapshot
+  DEPLOYMENT_ALIASES=()
+  ALIAS_DEPLOYMENT_IDS=()
+  require_tools python3
+  [[ -f "${ALIAS_HELPER}" ]] || die "required alias registry helper not found: ${ALIAS_HELPER}"
+  snapshot="$(python3 "${ALIAS_HELPER}" read "${OPERATOR_ROOT}")" || return
+  if [[ -n "${snapshot}" ]]; then
+    while IFS=$'\t' read -r deployment_alias deployment_id; do
+      # The helper emitted this canonical snapshot only after exact-field validation.
+      DEPLOYMENT_ALIASES+=("${deployment_alias}")
+      ALIAS_DEPLOYMENT_IDS+=("${deployment_id}")
+    done <<<"${snapshot}"
+  fi
+}
+
+resolve_deployment_target() {
+  local target="$1" index
+  if [[ "${target}" =~ ^hms-[a-f0-9]{12}$ ]]; then
+    printf '%s\n' "${target}"
+    return 0
+  fi
+  validate_deployment_alias "${target}"
+  load_alias_registry
+  for index in "${!DEPLOYMENT_ALIASES[@]}"; do
+    if [[ "${DEPLOYMENT_ALIASES[index]}" == "${target}" ]]; then
+      printf '%s\n' "${ALIAS_DEPLOYMENT_IDS[index]}"
+      return 0
+    fi
+  done
+  die "unknown deployment alias: ${target}"
+}
+
+alias_for_deployment_id() {
+  local deployment_id="$1" index
+  for index in "${!ALIAS_DEPLOYMENT_IDS[@]}"; do
+    if [[ "${ALIAS_DEPLOYMENT_IDS[index]}" == "${deployment_id}" ]]; then
+      printf '%s\n' "${DEPLOYMENT_ALIASES[index]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+alias_set() {
+  local deployment_alias="$1" deployment_id="$2"
+  validate_deployment_alias "${deployment_alias}"
+  validate_deployment_id "${deployment_id}"
+  require_tools python3
+  [[ -f "${ALIAS_HELPER}" ]] || die "required alias registry helper not found: ${ALIAS_HELPER}"
+  python3 "${ALIAS_HELPER}" set "${OPERATOR_ROOT}" "${deployment_alias}" "${deployment_id}"
+}
+
+alias_remove() {
+  local target="$1"
+  validate_deployment_alias "${target}"
+  require_tools python3
+  [[ -f "${ALIAS_HELPER}" ]] || die "required alias registry helper not found: ${ALIAS_HELPER}"
+  python3 "${ALIAS_HELPER}" remove "${OPERATOR_ROOT}" "${target}"
+}
+
+alias_rename() {
+  local old_alias="$1" new_alias="$2"
+  validate_deployment_alias "${old_alias}"
+  validate_deployment_alias "${new_alias}"
+  require_tools python3
+  [[ -f "${ALIAS_HELPER}" ]] || die "required alias registry helper not found: ${ALIAS_HELPER}"
+  python3 "${ALIAS_HELPER}" rename "${OPERATOR_ROOT}" "${old_alias}" "${new_alias}"
+}
+
+alias_list() {
+  local index
+  load_alias_registry
+  printf 'ALIAS\tDEPLOYMENT\n'
+  for index in "${!DEPLOYMENT_ALIASES[@]}"; do
+    printf '%s\t%s\n' "${DEPLOYMENT_ALIASES[index]}" "${ALIAS_DEPLOYMENT_IDS[index]}"
+  done
 }
 
 operator_dir() {

@@ -107,12 +107,28 @@ bucket_access_error_is_fatal() {
   (( status != 0 )) && [[ "${output}" == *'AccessDenied: cannot read bucket'* ]]
 }
 
+missing_credentials_print_canonical_login_flow() {
+  local output status
+  # `$1` is intentionally expanded by the child shell, not this test process.
+  # shellcheck disable=SC2016
+  output="$(env -u AWS_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+    -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_CREDENTIAL_EXPIRATION \
+    bash -c 'source "$1/scripts/lib.sh"; aws_preflight' _ "${REPO_ROOT}" 2>&1)"
+  status=$?
+  (( status != 0 )) &&
+    [[ "${output}" == *'aws login --profile platform-lab'* ]] &&
+    [[ "${output}" == *'export AWS_PROFILE=platform-lab-tofu'* ]] &&
+    [[ "${output}" != *'aws sso login'* ]] &&
+    [[ "${output}" != *'awslogin && awsexport'* ]]
+}
+
 run_case 'AWS_PROFILE overrides stale exported credentials' profile_overrides_stale_credentials
 run_case 'expired static credentials fail preflight' expired_static_credentials_fail
 run_case 'wrong AWS account is rejected' wrong_account_is_rejected
 run_case 'list discovery failure is nonzero' list_discovery_failure_propagates
 run_case 'missing state bucket is reported absent' missing_bucket_is_absent
 run_case 'state bucket access error is fatal' bucket_access_error_is_fatal
+run_case 'missing credentials print canonical login flow' missing_credentials_print_canonical_login_flow
 
 printf '1..%d\n' "$((passed + failed))"
 printf '# passed: %d, failed: %d\n' "${passed}" "${failed}"

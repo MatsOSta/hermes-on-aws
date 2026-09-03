@@ -37,9 +37,10 @@ aws_preflight() {
   elif [[ -n "${AWS_ACCESS_KEY_ID:-}" || -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
     die "Incomplete static environment credentials. Set both AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or unset them and export AWS_PROFILE."
   else
-    die "No AWS credentials found. Either:
-  1. Run: awslogin && awsexport   (static env vars, valid ~1 hour)
-  2. Or:  export AWS_PROFILE=platform-lab-tofu   (auto-refreshing via credential_process)"
+    die "No AWS credentials found. Authenticate and select the reviewed operator profile:
+  aws login --profile platform-lab
+  export AWS_PROFILE=platform-lab-tofu
+Then retry this command. A local awslogin alias is optional and is not required by this workflow."
   fi
 
   if ! caller_identity="$(aws --region "${AWS_REGION}" sts get-caller-identity \

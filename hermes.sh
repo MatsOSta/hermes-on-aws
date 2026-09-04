@@ -23,6 +23,11 @@ Commands:
   install <id>          Install Docker and pull Hermes image (step 1/3)
   start-gateway <id> [--recreate]
                         Safely start/retain the gateway; explicitly replace with --recreate
+  start-tunnel <id> [--recreate]
+                        Safely start/retain the private cloudflared tunnel;
+                        explicitly replace a mismatched tunnel container with --recreate
+  status-tunnel <id>    Show the cloudflared tunnel container status
+  stop-tunnel <id>      Stop the cloudflared tunnel container (idempotent)
   start <id>            Start a stopped instance
   stop <id>             Stop a running instance
   ssm <id>              Open an interactive SSM session
@@ -59,7 +64,13 @@ case "${command_name}" in
     deployment_id="$(resolve_deployment_target "$2")"
     exec "${REPO_ROOT}/scripts/start-gateway.sh" "${deployment_id}" "${3:-}"
     ;;
-  deploy|teardown|purge|install|start|stop|ssm|logs)
+  start-tunnel)
+    [[ $# -ge 2 && $# -le 3 ]] || { usage >&2; exit 2; }
+    [[ $# -eq 2 || "$3" == '--recreate' ]] || { usage >&2; exit 2; }
+    deployment_id="$(resolve_deployment_target "$2")"
+    exec "${REPO_ROOT}/scripts/start-tunnel.sh" "${deployment_id}" "${3:-}"
+    ;;
+  deploy|teardown|purge|install|start|stop|ssm|logs|status-tunnel|stop-tunnel)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }
     deployment_id="$(resolve_deployment_target "$2")"
     exec "${REPO_ROOT}/scripts/${command_name}.sh" "${deployment_id}"

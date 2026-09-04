@@ -75,7 +75,7 @@ make_dispatch_fixture() {
   cp "${REPO_ROOT}/hermes.sh" "${fixture}/hermes.sh"
   cp "${REPO_ROOT}/scripts/lib.sh" "${fixture}/scripts/lib.sh"
   cp "${REPO_ROOT}/scripts/support/deployment-aliases.py" "${fixture}/scripts/support/deployment-aliases.py"
-  for script in deploy teardown purge install start stop ssm logs start-gateway status list; do
+  for script in deploy teardown purge install start stop ssm logs start-gateway start-tunnel status-tunnel stop-tunnel status list; do
     # shellcheck disable=SC2016
     printf '#!/usr/bin/env bash\nprintf "%%s" "$0" >>"${DISPATCH_LOG}"\nprintf " <%%s>" "$@" >>"${DISPATCH_LOG}"\nprintf "\\n" >>"${DISPATCH_LOG}"\n' >"${fixture}/scripts/${script}.sh"
     chmod +x "${fixture}/scripts/${script}.sh"
@@ -87,14 +87,14 @@ all_target_dispatch_is_canonical() {
   local home fixture command direct_log alias_log
   home="$(new_home)"; fixture="${TEST_TMP}/dispatch"; make_dispatch_fixture "${fixture}"
   HOME="${home}" bash "${fixture}/hermes.sh" alias set smoketest "${ID}" >/dev/null || return
-  for command in deploy teardown purge install start stop ssm logs; do
+  for command in deploy teardown purge install start stop ssm logs status-tunnel stop-tunnel; do
     : >"${home}/direct"; : >"${home}/alias"
     HOME="${home}" DISPATCH_LOG="${home}/direct" bash "${fixture}/hermes.sh" "${command}" "${ID}" || return
     HOME="${home}" DISPATCH_LOG="${home}/alias" bash "${fixture}/hermes.sh" "${command}" smoketest || return
     direct_log="$(<"${home}/direct")"; alias_log="$(<"${home}/alias")"
     [[ "${direct_log}" == "${alias_log}" && "${alias_log}" == *" <${ID}>" && "${alias_log}" != *smoketest* ]] || return 1
   done
-  for args in 'start-gateway|smoketest|' 'start-gateway|smoketest|--recreate' 'status|smoketest|'; do
+  for args in 'start-gateway|smoketest|' 'start-gateway|smoketest|--recreate' 'start-tunnel|smoketest|' 'start-tunnel|smoketest|--recreate' 'status|smoketest|'; do
     IFS='|' read -r command _target option <<<"${args}"
     : >"${home}/direct"; : >"${home}/alias"
     HOME="${home}" DISPATCH_LOG="${home}/direct" bash "${fixture}/hermes.sh" "${command}" "${ID}" ${option:+"${option}"} || return

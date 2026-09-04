@@ -65,6 +65,7 @@ invalid_id_rejected_before_docker() {
 }
 
 matching_running() { run_helper matching-running; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" != *' rm '* && "${RUN_CALLS}" != *' run '* && "${RUN_CALLS}" != *' start '* ]]; }
+matching_tunnel_network() { run_helper matching-tunnel-network; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" != *' rm '* && "${RUN_CALLS}" != *' run '* && "${RUN_CALLS}" != *' start '* ]]; }
 matching_stopped() { run_helper matching-stopped; (( RUN_STATUS == 0 )) && [[ "$(grep -c '^container start hermes-gateway$' <<<"${RUN_CALLS}")" -eq 1 ]]; }
 mismatch_rejected() { run_helper "$1"; (( RUN_STATUS != 0 )) && [[ "${RUN_CALLS}" != *' rm '* && "${RUN_CALLS}" != *' start '* && "${RUN_CALLS}" != *' run '* ]] && [[ "${RUN_OUTPUT}" == *'no changes were made'* ]]; }
 absent_created() { run_helper absent; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" == *'run -d --name hermes-gateway --restart unless-stopped --volume /var/lib/hermes:/opt/data nousresearch/hermes-agent@sha256:f5efd66dfdc0a434adf20af4030ac856eea6631405f7d44a827c6d7a76bf083e hermes gateway run'* ]]; }
@@ -72,6 +73,7 @@ recreate_replaces() { run_helper matching-running --recreate; (( RUN_STATUS == 0
 immediate_exit() { run_helper "$1" "${2:-}"; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'did not remain running'* ]] && [[ "${RUN_CALLS}" == *'logs --tail 50 hermes-gateway'* ]]; }
 
 run_case 'matching running container is retained' matching_running
+run_case 'gateway attached to bridge and optional tunnel network is retained' matching_tunnel_network
 run_case 'mocked non-root uid is rejected before Docker' non_root_rejected_before_docker
 run_case 'absent data directory is rejected before Docker mutation' absent_data_dir_rejected_before_mutation
 run_case 'non-directory data path is rejected before Docker mutation' non_directory_data_path_rejected_before_mutation
@@ -81,7 +83,7 @@ done
 run_case 'too-short volume ID is rejected before Docker' invalid_id_rejected_before_docker too-short-id
 run_case 'too-long volume ID is rejected before Docker' invalid_id_rejected_before_docker too-long-id
 run_case 'matching stopped container is started' matching_stopped
-for field in image command bind restart privileged capabilities ports publish-all host-network extra-mount volumes-from; do
+for field in image command bind restart privileged capabilities ports publish-all host-network extra-network extra-mount volumes-from; do
   run_case "unsafe ${field} is rejected and preserved" mismatch_rejected "mismatch-${field}"
 done
 run_case 'absent container is created exactly' absent_created

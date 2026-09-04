@@ -121,6 +121,8 @@ plan preflights and requires two distinct confirmations before deleting the
 host/data and state foundation. See the
 [greenfield operator runbook](docs/greenfield-operations.md) for the exact
 workflow, SSM time bounds, mount contract, and recovery boundary.
+For the optional LINE integration, follow the dedicated
+[Cloudflare named-tunnel runbook](docs/line-cloudflare-tunnel.md).
 
 ## Migration brakes
 
@@ -178,6 +180,8 @@ tests/ssm_lifecycle_test.sh
 tests/mount_data_volume_test.sh
 tests/gateway_lifecycle_test.sh
 tests/gateway_operator_test.sh
+tests/tunnel_lifecycle_test.sh
+tests/tunnel_operator_test.sh
 tofu fmt -check -recursive .
 tofu -chdir=infrastructure/aws init -backend=false -input=false
 tofu -chdir=infrastructure/aws validate

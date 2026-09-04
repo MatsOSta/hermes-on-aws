@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 
 set -euo pipefail
 printf '%s\n' "$*" >>"${MOCK_DOCKER_CALLS}"
@@ -22,7 +23,7 @@ if [[ "$1 $2 $3" == 'container inspect --format' ]]; then
   [[ "${mode}" != exit-after-start || "${state}" != started ]] || running=false
   [[ "${mode}" != exit-after-run || "${state}" != created ]] || running=false
   cmd='["hermes","gateway","run"]' binds='["/var/lib/hermes:/opt/data"]' restart='unless-stopped'
-  privileged=false caps=null ports='{}' publish=false network=bridge mounts=null volumes_from=null
+  privileged=false caps=null ports='{}' publish=false network=bridge networks='bridge ' mounts=null volumes_from=null
   case "${mode}" in
     mismatch-image) image='wrong:image' ;;
     mismatch-command) cmd='["wrong"]' ;;
@@ -33,6 +34,8 @@ if [[ "$1 $2 $3" == 'container inspect --format' ]]; then
     mismatch-ports) ports='{"80/tcp":[{"HostPort":"80"}]}' ;;
     mismatch-publish-all) publish=true ;;
     mismatch-host-network) network=host ;;
+    matching-tunnel-network) networks='bridge hermes-tunnel-net ' ;;
+    mismatch-extra-network) networks='bridge hermes-tunnel-net unexpected-net ' ;;
     mismatch-extra-mount) mounts='[{"Type":"bind"}]' ;;
     mismatch-volumes-from) volumes_from='["other"]' ;;
   esac
@@ -40,6 +43,7 @@ if [[ "$1 $2 $3" == 'container inspect --format' ]]; then
     '{{.Config.Image}}') printf '%s\n' "${image}" ;;
     '{{.HostConfig.Privileged}}') printf '%s\n' "${privileged}" ;;
     '{{.HostConfig.NetworkMode}}') printf '%s\n' "${network}" ;;
+    '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}') printf '%s\n' "${networks}" ;;
     '{{.HostConfig.RestartPolicy.Name}}') printf '%s\n' "${restart}" ;;
     '{{json .HostConfig.Binds}}') printf '%s\n' "${binds}" ;;
     '{{json .HostConfig.Mounts}}') printf '%s\n' "${mounts}" ;;

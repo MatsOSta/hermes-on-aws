@@ -64,6 +64,8 @@ jobs:
           tests/mount_data_volume_test.sh
           tests/gateway_lifecycle_test.sh
           tests/gateway_operator_test.sh
+          tests/tunnel_lifecycle_test.sh
+          tests/tunnel_operator_test.sh
 
   opentofu:
     runs-on: ubuntu-latest

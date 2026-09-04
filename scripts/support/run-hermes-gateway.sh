@@ -75,7 +75,7 @@ inspect_container() {
 contract_mismatches() {
   local existing_image existing_privileged existing_network_mode existing_restart_policy
   local existing_binds existing_mounts existing_volumes_from existing_cap_add
-  local existing_port_bindings existing_publish_all_ports existing_command
+  local existing_port_bindings existing_publish_all_ports existing_command existing_networks
   existing_image="$(docker container inspect --format '{{.Config.Image}}' "${HERMES_CONTAINER_NAME}")"
   existing_privileged="$(docker container inspect --format '{{.HostConfig.Privileged}}' "${HERMES_CONTAINER_NAME}")"
   existing_network_mode="$(docker container inspect --format '{{.HostConfig.NetworkMode}}' "${HERMES_CONTAINER_NAME}")"
@@ -87,6 +87,7 @@ contract_mismatches() {
   existing_port_bindings="$(docker container inspect --format '{{json .HostConfig.PortBindings}}' "${HERMES_CONTAINER_NAME}")"
   existing_publish_all_ports="$(docker container inspect --format '{{.HostConfig.PublishAllPorts}}' "${HERMES_CONTAINER_NAME}")"
   existing_command="$(docker container inspect --format '{{json .Config.Cmd}}' "${HERMES_CONTAINER_NAME}")"
+  existing_networks="$(docker container inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "${HERMES_CONTAINER_NAME}")"
 
   [[ "${existing_image}" == "${HERMES_IMAGE}" ]] || echo 'image is not the pinned Hermes image'
   [[ "${existing_command}" == '["hermes","gateway","run"]' ]] || echo 'configured command is not hermes gateway run'
@@ -97,6 +98,7 @@ contract_mismatches() {
   [[ "${existing_port_bindings}" == null || "${existing_port_bindings}" == '{}' ]] || echo 'published port bindings are present'
   [[ "${existing_publish_all_ports}" == false ]] || echo 'PublishAllPorts is not false'
   [[ "${existing_network_mode}" != host ]] || echo 'network mode is host'
+  [[ "${existing_networks}" == 'bridge ' || "${existing_networks}" == 'bridge hermes-tunnel-net ' ]] || echo 'attached networks are not exactly bridge with optional hermes-tunnel-net'
   [[ "${existing_mounts}" == null || "${existing_mounts}" == '[]' ]] || echo 'HostConfig.Mounts is not empty'
   [[ "${existing_volumes_from}" == null || "${existing_volumes_from}" == '[]' ]] || echo 'VolumesFrom is not empty'
 }

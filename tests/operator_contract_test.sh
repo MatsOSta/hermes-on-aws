@@ -88,9 +88,21 @@ checker_rejects_non_executable_runtime_helper() {
   [[ "${output}" == *'tracked shell entry point is not mode 100755: scripts/support/run-hermes-gateway.sh'* ]]
 }
 
+checker_rejects_non_executable_tunnel_helper() {
+  local fixture="${TEST_TMP}/non-executable-tunnel-helper" output
+  make_fixture "${fixture}"
+  chmod -x "${fixture}/scripts/support/run-hermes-tunnel.sh"
+  git -C "${fixture}" add scripts/support/run-hermes-tunnel.sh
+  if output="$("${CHECKER}" "${fixture}" 2>&1)"; then
+    return 1
+  fi
+  [[ "${output}" == *'tracked shell entry point is not mode 100755: scripts/support/run-hermes-tunnel.sh'* ]]
+}
+
 checker_accepts_complete_contract
 checker_rejects_missing_dispatch_target
 checker_rejects_missing_status_dispatch_target
 checker_rejects_missing_list_dispatch_target
 checker_rejects_non_executable_entry_point
 checker_rejects_non_executable_runtime_helper
+checker_rejects_non_executable_tunnel_helper

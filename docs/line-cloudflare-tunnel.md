@@ -5,6 +5,36 @@ managed Cloudflare named tunnel. It adds no inbound security-group rule and
 publishes no Docker host port. `cloudflared` reaches the gateway by Docker DNS
 on the private `hermes-tunnel-net` bridge.
 
+## Required outbound network path
+
+Cloudflare Tunnel requires outbound port 7844 to its global edge endpoints:
+
+- UDP/7844 for QUIC;
+- TCP/7844 for HTTP/2 fallback.
+
+The reviewed greenfield security group allows both protocols to
+`198.41.192.0/24` and `198.41.200.0/24`, the IPv4 ranges containing
+Cloudflare's documented `region1.v2.argotunnel.com` and
+`region2.v2.argotunnel.com` endpoints. TCP/443 remains available for the
+host's existing HTTPS traffic. Security groups are stateful, so replies to
+these outbound connections require no inbound security-group rule.
+
+This root does not manage a network ACL. If an operator has attached a custom
+restrictive NACL outside this repository, it must allow outbound TCP/UDP 7844
+and the corresponding ephemeral return traffic. Do not add an inbound
+security-group rule to compensate for a restrictive NACL.
+
+After applying the reviewed OpenTofu plan, verify TCP reachability from the
+host before debugging dashboard routing. For example, in an interactive SSM
+session:
+
+```sh
+timeout 5 bash -c 'exec 3<>/dev/tcp/198.41.192.167/7844'
+```
+
+Exit status 0 proves that TCP/7844 is reachable; status 124 is a timeout.
+Cloudflare's connector logs provide the corresponding QUIC/UDP evidence.
+
 ## Create the remote tunnel and route
 
 In the Cloudflare dashboard, create a remotely managed named tunnel for this
@@ -80,13 +110,38 @@ retained. A mismatch fails closed. Review every reported mismatch before using
 the tunnel container, not the token. `stop-tunnel` is idempotent when absent or
 already stopped, but refuses to stop an unverified same-name container.
 
+The container exposes Cloudflare's metrics/readiness endpoint only on
+`127.0.0.1:2000` inside the container. No Docker host port is published.
+`start-tunnel` waits for the native `cloudflared tunnel ready` probe and
+succeeds only when at least one active Cloudflare edge connection exists.
+`status-tunnel` exits nonzero for an absent, stopped, contract-mismatched, or
+running-but-unconnected container; only a contract-matching connected tunnel
+returns success.
+
 For diagnostics, use `status-tunnel`, Docker container state/health metadata,
 and requests to the public health path. Do not print the token, inspect file
 contents, include it in `docker inspect` arguments, or paste logs containing
-credentials. A failing public health check with a running tunnel should be
-investigated in this order: dashboard hostname/service route, membership of
-both containers on `hermes-tunnel-net`, gateway state, and Hermes LINE
-configuration.
+credentials. A failing start/readiness check should be investigated in this
+order: outbound TCP/UDP 7844, custom NACL or host-firewall restrictions,
+connector logs, dashboard hostname/service route, membership of both
+containers on `hermes-tunnel-net`, gateway state, and Hermes LINE configuration.
+
+## Complete the live pilot
+
+Static CI cannot prove live AWS, Cloudflare, or LINE connectivity. After a
+human reviews and applies the OpenTofu plan, record all of the following before
+declaring the pilot complete:
+
+1. TCP/7844 succeeds from the deployment host and connector logs confirm QUIC
+   or HTTP/2 edge connections.
+2. `status-tunnel` reports connected and Cloudflare shows at least one active
+   connector replica.
+3. `https://<host>/line/webhook/health` succeeds.
+4. LINE's webhook **Verify** action succeeds.
+5. An explicitly approved LINE user completes a message round trip.
+6. The gateway and tunnel recover after the reviewed restart or reboot test.
+7. The applied security group still has zero ingress rules and Docker still
+   publishes no host ports.
 
 ## Rotate or roll back
 
@@ -112,5 +167,7 @@ sudo rmdir -- /var/lib/hermes/cloudflare-tunnel
 
 The container removal is intentionally not forced: inspect and resolve an
 unexpected running or mismatched same-name container instead of deleting it.
-These steps do not alter the gateway data, security group, VPC, IAM, backend,
-or OpenTofu state.
+These container/token rollback steps do not alter gateway data, the security
+group, VPC, IAM, backend, or OpenTofu state. Reverting the reviewed 7844 egress
+rules, if desired after disabling the pilot, requires a separate reviewed
+OpenTofu change and human-operated apply.

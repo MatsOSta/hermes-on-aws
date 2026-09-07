@@ -30,8 +30,8 @@ run_operator() {
 
 start_success_is_gated() {
   run_operator start-tunnel success
-  (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'created and stable'* ]] &&
-    [[ "${RUN_OUTPUT}" == *'Hermes cloudflared tunnel container is running'* ]] &&
+  (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'created and connected'* ]] &&
+    [[ "${RUN_OUTPUT}" == *'Hermes cloudflared tunnel is connected'* ]] &&
     [[ "${RUN_CALLS}" == *'DELIVERED_REVIEWED_HELPER'* ]] &&
     [[ "${RUN_CALLS}" == *'REMOTE_BASE64_CHECK'* ]] &&
     [[ "${RUN_CALLS}" == *'START_SUBCOMMAND'* ]]
@@ -77,7 +77,7 @@ stop_rejects_extra_arguments() {
 
 status_success_is_gated() {
   run_operator status-tunnel status-success
-  (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'matches the expected tunnel contract and is running'* ]] &&
+  (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'matches the expected tunnel contract and is connected to Cloudflare'* ]] &&
     [[ "${RUN_CALLS}" == *'STATUS_SUBCOMMAND'* ]] && [[ "${RUN_CALLS}" == *'DELIVERED_REVIEWED_HELPER'* ]]
 }
 
@@ -91,7 +91,7 @@ status_rejects_extra_arguments() {
   (( RUN_STATUS == 2 )) && [[ -z "${RUN_CALLS}" ]]
 }
 
-run_case 'start-tunnel success waits for terminal Success and remote stability' start_success_is_gated
+run_case 'start-tunnel success waits for terminal Success and connector readiness' start_success_is_gated
 run_case 'start-tunnel terminal SSM failure cannot print success' start_failure_has_no_success
 run_case 'start-tunnel active SSM deadline cannot print success' start_active_timeout_has_no_success
 run_case 'start-tunnel --recreate is delivered to reviewed helper' start_recreate_is_forwarded
@@ -99,7 +99,7 @@ run_case 'start-tunnel invalid flag makes no AWS call' start_invalid_flag_is_loc
 run_case 'stop-tunnel success reports the container was stopped' stop_success_is_gated
 run_case 'stop-tunnel terminal SSM failure cannot print success' stop_failure_has_no_success
 run_case 'stop-tunnel rejects extra arguments before any AWS call' stop_rejects_extra_arguments
-run_case 'status-tunnel success reports the container contract and state' status_success_is_gated
+run_case 'status-tunnel success reports the container contract and Cloudflare readiness' status_success_is_gated
 run_case 'status-tunnel terminal SSM failure cannot print success' status_failure_has_no_success
 run_case 'status-tunnel rejects extra arguments before any AWS call' status_rejects_extra_arguments
 printf '1..%d\n# passed: %d, failed: %d\n' "$((passed + failed))" "${passed}" "${failed}"

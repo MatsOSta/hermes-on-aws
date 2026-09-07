@@ -33,4 +33,4 @@ command_id="$(send_ssm_command "${instance_id}" "Start Hermes cloudflared tunnel
   "\"\${runtime_helper}\" ${remote_arguments}")"
 wait_and_print_ssm_command "${command_id}" "${instance_id}" \
   "${HERMES_SSM_DEADLINE_SECONDS:-600}" "${HERMES_SSM_POLL_INTERVAL_SECONDS:-5}"
-echo "Hermes cloudflared tunnel container is running for ${deployment_id}."
+echo "Hermes cloudflared tunnel is connected for ${deployment_id}."

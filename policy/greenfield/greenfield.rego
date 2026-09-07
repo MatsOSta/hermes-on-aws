@@ -20,21 +20,21 @@ data_sources(data_type) := object.union_n([object.get(object.get(document, "data
 	some document in configuration_documents
 ])
 
-reviewed_resource_types := {
-	"aws_vpc",
-	"aws_subnet",
-	"aws_internet_gateway",
-	"aws_route_table",
-	"aws_route",
-	"aws_route_table_association",
-	"aws_security_group",
-	"aws_vpc_security_group_egress_rule",
-	"aws_iam_role",
-	"aws_iam_instance_profile",
-	"aws_iam_role_policy_attachment",
-	"aws_instance",
-	"aws_ebs_volume",
-	"aws_volume_attachment",
+reviewed_resource_cardinality := {
+	"aws_vpc":                                1,
+	"aws_subnet":                             1,
+	"aws_internet_gateway":                   1,
+	"aws_route_table":                        1,
+	"aws_route":                              1,
+	"aws_route_table_association":            1,
+	"aws_security_group":                     1,
+	"aws_vpc_security_group_egress_rule":     5,
+	"aws_iam_role":                           1,
+	"aws_iam_instance_profile":               1,
+	"aws_iam_role_policy_attachment":         1,
+	"aws_instance":                           1,
+	"aws_ebs_volume":                         1,
+	"aws_volume_attachment":                  1,
 }
 
 reviewed_data_sources := {
@@ -93,23 +93,25 @@ deny_greenfield contains "Greenfield singleton data sources must not use count o
 deny_greenfield contains "Greenfield resource types must match the reviewed allowlist" if {
 	some document in configuration_documents
 	some resource_type in object.keys(object.get(document, "resource", {}))
-	not resource_type in reviewed_resource_types
+	not resource_type in object.keys(reviewed_resource_cardinality)
 }
 
 deny_greenfield contains "Greenfield must contain exactly one of each reviewed resource type" if {
-	some resource_type in reviewed_resource_types
-	resource_instance_count(resource_type) != 1
+	some resource_type, expected_count in reviewed_resource_cardinality
+	resource_instance_count(resource_type) != expected_count
 }
 
 deny_greenfield contains "Greenfield singleton resources must not use count or for_each" if {
-	some resource_type in reviewed_resource_types
+	some resource_type in object.keys(reviewed_resource_cardinality)
+	resource_type != "aws_vpc_security_group_egress_rule"
 	some name
 	some resource in resources(resource_type)[name]
 	object.get(resource, "count", null) != null
 }
 
 deny_greenfield contains "Greenfield singleton resources must not use count or for_each" if {
-	some resource_type in reviewed_resource_types
+	some resource_type in object.keys(reviewed_resource_cardinality)
+	resource_type != "aws_vpc_security_group_egress_rule"
 	some name
 	some resource in resources(resource_type)[name]
 	object.get(resource, "for_each", null) != null
@@ -201,38 +203,70 @@ deny_greenfield contains "Greenfield standalone ingress rules are forbidden" if 
 	rule.type == "ingress"
 }
 
-deny_greenfield contains "Greenfield egress rules must be IPv4 TCP/443 only" if {
-	some name
-	some rule in resources("aws_vpc_security_group_egress_rule")[name]
-	not valid_https_egress(rule)
+reviewed_egress_names := {
+	"https",
+	"cloudflare_tunnel_tcp_region1",
+	"cloudflare_tunnel_tcp_region2",
+	"cloudflare_tunnel_udp_region1",
+	"cloudflare_tunnel_udp_region2",
 }
 
-deny_greenfield contains "Greenfield egress rules must be IPv4 TCP/443 only" if {
+deny_greenfield contains "Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" if {
+	object.keys(resources("aws_vpc_security_group_egress_rule")) != reviewed_egress_names
+}
+
+deny_greenfield contains "Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" if {
+	some name
+	some rule in resources("aws_vpc_security_group_egress_rule")[name]
+	not valid_reviewed_egress(name, rule)
+}
+
+deny_greenfield contains "Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" if {
 	some name
 	some rule in resources("aws_security_group_rule")[name]
 	rule.type == "egress"
-	not valid_legacy_https_egress(rule)
 }
 
-valid_https_egress(rule) if {
+valid_reviewed_egress("https", rule) if {
+	rule.security_group_id == "${aws_security_group.host.id}"
+	rule.description == "Outbound HTTPS only"
 	rule.ip_protocol == "tcp"
 	rule.from_port == 443
 	rule.to_port == 443
 	rule.cidr_ipv4 == "0.0.0.0/0"
+	valid_egress_destination_shape(rule)
+}
+
+valid_reviewed_egress("cloudflare_tunnel_tcp_region1", rule) if {
+	valid_cloudflare_egress(rule, "tcp", "198.41.192.0/24", "Cloudflare Tunnel HTTP2 region 1")
+}
+
+valid_reviewed_egress("cloudflare_tunnel_tcp_region2", rule) if {
+	valid_cloudflare_egress(rule, "tcp", "198.41.200.0/24", "Cloudflare Tunnel HTTP2 region 2")
+}
+
+valid_reviewed_egress("cloudflare_tunnel_udp_region1", rule) if {
+	valid_cloudflare_egress(rule, "udp", "198.41.192.0/24", "Cloudflare Tunnel QUIC region 1")
+}
+
+valid_reviewed_egress("cloudflare_tunnel_udp_region2", rule) if {
+	valid_cloudflare_egress(rule, "udp", "198.41.200.0/24", "Cloudflare Tunnel QUIC region 2")
+}
+
+valid_cloudflare_egress(rule, protocol, cidr, description) if {
+	rule.security_group_id == "${aws_security_group.host.id}"
+	rule.description == description
+	rule.ip_protocol == protocol
+	rule.from_port == 7844
+	rule.to_port == 7844
+	rule.cidr_ipv4 == cidr
+	valid_egress_destination_shape(rule)
+}
+
+valid_egress_destination_shape(rule) if {
 	object.get(rule, "cidr_ipv6", null) == null
 	object.get(rule, "prefix_list_id", null) == null
 	object.get(rule, "referenced_security_group_id", null) == null
-}
-
-valid_legacy_https_egress(rule) if {
-	rule.protocol == "tcp"
-	rule.from_port == 443
-	rule.to_port == 443
-	object.get(rule, "cidr_blocks", []) == ["0.0.0.0/0"]
-	object.get(rule, "ipv6_cidr_blocks", []) == []
-	object.get(rule, "prefix_list_ids", []) == []
-	object.get(rule, "source_security_group_id", null) == null
-	object.get(rule, "self", false) == false
 }
 
 deny_greenfield contains "Greenfield instances must not set key_name" if {

@@ -13,6 +13,10 @@ container_state="$(cat "${container_state_file}" 2>/dev/null || true)"
 
 if [[ "$*" == 'info' ]]; then exit 0; fi
 if [[ "$*" == 'logs --tail 50 hermes-cloudflared' ]]; then echo 'mock tunnel logs'; exit 0; fi
+if [[ "$*" == 'exec hermes-cloudflared cloudflared tunnel --metrics 127.0.0.1:2000 ready' ]]; then
+  [[ "${MOCK_TUNNEL_READY_MODE:-connected}" == connected ]]
+  exit
+fi
 
 # --- gateway container existence / running state ---
 if [[ "$*" == 'container inspect hermes-gateway' ]]; then
@@ -75,7 +79,7 @@ if [[ "$1 $2 $3" == 'container inspect --format' && "${5:-}" == hermes-cloudflar
   [[ "${container_mode}" != exit-after-start || "${container_state}" != started ]] || running=false
   [[ "${container_mode}" != exit-after-run || "${container_state}" != created ]] || running=false
   [[ "${container_mode}" != absent-exit-after-run || "${container_state}" != created ]] || running=false
-  cmd='["tunnel","--no-autoupdate","run","--token-file","/run/secrets/cloudflared-token"]'
+  cmd='["tunnel","--no-autoupdate","--metrics","127.0.0.1:2000","run","--token-file","/run/secrets/cloudflared-token"]'
   binds='["/var/lib/hermes/cloudflare-tunnel/token:/run/secrets/cloudflared-token:ro"]'
   restart='unless-stopped'
   privileged=false caps=null cap_drop='["ALL"]' ports='{}' publish=false network=hermes-tunnel-net
@@ -125,7 +129,7 @@ if [[ "$*" == 'container stop hermes-cloudflared' ]]; then echo stopped >"${cont
 if [[ "$*" == 'container rm -f hermes-cloudflared' ]]; then echo removed >"${container_state_file}"; exit 0; fi
 if [[ "$1" == run ]]; then
   [[ "${container_mode}" != run-fail ]] || exit 1
-  [[ "$*" == "run -d --name hermes-cloudflared --restart unless-stopped --network hermes-tunnel-net --user 0:0 --cap-drop ALL --security-opt no-new-privileges --read-only --volume /var/lib/hermes/cloudflare-tunnel/token:/run/secrets/cloudflared-token:ro ${image} tunnel --no-autoupdate run --token-file /run/secrets/cloudflared-token" ]] || { echo 'unexpected docker run shape' >&2; exit 94; }
+  [[ "$*" == "run -d --name hermes-cloudflared --restart unless-stopped --network hermes-tunnel-net --user 0:0 --cap-drop ALL --security-opt no-new-privileges --read-only --volume /var/lib/hermes/cloudflare-tunnel/token:/run/secrets/cloudflared-token:ro ${image} tunnel --no-autoupdate --metrics 127.0.0.1:2000 run --token-file /run/secrets/cloudflared-token" ]] || { echo 'unexpected docker run shape' >&2; exit 94; }
   echo created >"${container_state_file}"; echo mock-container-id; exit 0
 fi
 echo "unexpected docker invocation: $*" >&2

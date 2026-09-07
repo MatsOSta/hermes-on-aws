@@ -53,7 +53,8 @@ STAT
   chmod +x "${case_dir}/bin/docker" "${case_dir}/bin/id" "${case_dir}/bin/stat" "${case_dir}/bin/wc"
   : >"${case_dir}/calls"
   PATH="${case_dir}/bin:${PATH}" MOCK_TUNNEL_CALLS="${case_dir}/calls" \
-    HERMES_TUNNEL_STABILITY_SECONDS=0 bash "${HELPER}" "$@" >"${case_dir}/output" 2>&1
+    HERMES_TUNNEL_STABILITY_SECONDS=0 HERMES_TUNNEL_READINESS_ATTEMPTS=1 \
+    HERMES_TUNNEL_READINESS_INTERVAL_SECONDS=0 bash "${HELPER}" "$@" >"${case_dir}/output" 2>&1
   RUN_STATUS=$? RUN_OUTPUT="$(<"${case_dir}/output")" RUN_CALLS="$(<"${case_dir}/calls")"
 }
 
@@ -124,7 +125,7 @@ failed_attach_does_not_remove_preexisting_network() {
 matching_running() { run_helper start; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" != *' rm '* && "${RUN_CALLS}" != *' run '* && "${RUN_CALLS}" != *' start '* ]]; }
 matching_stopped() { MOCK_TUNNEL_CONTAINER_MODE=matching-stopped run_helper start; (( RUN_STATUS == 0 )) && [[ "$(grep -c '^container start hermes-cloudflared$' <<<"${RUN_CALLS}")" -eq 1 ]]; }
 mismatch_rejected() { MOCK_TUNNEL_CONTAINER_MODE="mismatch-$1" run_helper start; (( RUN_STATUS != 0 )) && [[ "${RUN_CALLS}" != *'network '* && "${RUN_CALLS}" != *' rm '* && "${RUN_CALLS}" != *' start '* && "${RUN_CALLS}" != *' run '* ]] && [[ "${RUN_OUTPUT}" == *'no changes were made'* ]]; }
-absent_created() { MOCK_TUNNEL_CONTAINER_MODE=absent run_helper start; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" == *'run -d --name hermes-cloudflared --restart unless-stopped --network hermes-tunnel-net --user 0:0 --cap-drop ALL --security-opt no-new-privileges --read-only --volume /var/lib/hermes/cloudflare-tunnel/token:/run/secrets/cloudflared-token:ro cloudflare/cloudflared@sha256:51c9cefcb4569df44e1ad403ab1d3d8065aa8e84339bcfc6aee75502e1140339 tunnel --no-autoupdate run --token-file /run/secrets/cloudflared-token'* ]]; }
+absent_created() { MOCK_TUNNEL_CONTAINER_MODE=absent run_helper start; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" == *'run -d --name hermes-cloudflared --restart unless-stopped --network hermes-tunnel-net --user 0:0 --cap-drop ALL --security-opt no-new-privileges --read-only --volume /var/lib/hermes/cloudflare-tunnel/token:/run/secrets/cloudflared-token:ro cloudflare/cloudflared@sha256:51c9cefcb4569df44e1ad403ab1d3d8065aa8e84339bcfc6aee75502e1140339 tunnel --no-autoupdate --metrics 127.0.0.1:2000 run --token-file /run/secrets/cloudflared-token'* ]]; }
 failed_create_rolls_back_network() { MOCK_TUNNEL_CONTAINER_MODE=run-fail MOCK_TUNNEL_NETWORK_MODE=absent MOCK_TUNNEL_GATEWAY_MODE=detached run_helper start; (( RUN_STATUS != 0 )) && [[ "${RUN_CALLS}" == *'network disconnect hermes-tunnel-net hermes-gateway'* ]] && [[ "${RUN_CALLS}" == *'network rm hermes-tunnel-net'* ]]; }
 recreate_replaces() { MOCK_TUNNEL_CONTAINER_MODE=matching-running run_helper start --recreate; (( RUN_STATUS == 0 )) && [[ "${RUN_CALLS}" == *'container rm -f hermes-cloudflared'* ]] && [[ "${RUN_CALLS}" == *'run -d '* ]]; }
 immediate_exit() { MOCK_TUNNEL_CONTAINER_MODE="$1" run_helper start "${2:-}"; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'did not remain running'* ]] && [[ "${RUN_CALLS}" != *'logs '* ]]; }
@@ -143,10 +144,13 @@ preexisting_start_stability_failure_rolls_back_only_new_attachment() {
     [[ "${RUN_CALLS}" != *'container rm -f hermes-cloudflared'* ]]
 }
 
-status_absent() { MOCK_TUNNEL_CONTAINER_MODE=absent run_helper status; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'does not exist'* ]] && [[ "${RUN_CALLS}" != *'network'* ]]; }
-status_matching() { run_helper status; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'matches the expected tunnel contract and is running'* ]]; }
-status_mismatched() { MOCK_TUNNEL_CONTAINER_MODE=mismatch-image run_helper status; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'does not match the expected tunnel contract'* ]]; }
-status_requires_no_token() { MOCK_DIR_STATE=absent MOCK_FILE_STATE=absent run_helper status; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'matches the expected tunnel contract'* ]]; }
+start_unconnected_fails_without_destroying_container() { MOCK_TUNNEL_READY_MODE=unconnected run_helper start; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'no active Cloudflare edge connection'* ]] && [[ "${RUN_CALLS}" != *'container rm'* ]]; }
+status_absent() { MOCK_TUNNEL_CONTAINER_MODE=absent run_helper status; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'does not exist'* ]] && [[ "${RUN_CALLS}" != *'network'* ]]; }
+status_matching() { run_helper status; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'matches the expected tunnel contract and is connected to Cloudflare'* ]]; }
+status_unconnected() { MOCK_TUNNEL_READY_MODE=unconnected run_helper status; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'running but unconnected'* ]]; }
+status_stopped() { MOCK_TUNNEL_CONTAINER_MODE=matching-stopped run_helper status; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'contract but is stopped'* ]] && [[ "${RUN_CALLS}" != *' exec '* ]]; }
+status_mismatched() { MOCK_TUNNEL_CONTAINER_MODE=mismatch-image run_helper status; (( RUN_STATUS != 0 )) && [[ "${RUN_OUTPUT}" == *'does not match the expected tunnel contract'* ]]; }
+status_requires_no_token() { MOCK_DIR_STATE=absent MOCK_FILE_STATE=absent run_helper status; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'connected to Cloudflare'* ]]; }
 status_rejects_arguments() { run_helper status extra; (( RUN_STATUS == 2 )) && [[ -z "${RUN_CALLS}" ]]; }
 
 stop_absent_is_idempotent() { MOCK_TUNNEL_CONTAINER_MODE=absent run_helper stop; (( RUN_STATUS == 0 )) && [[ "${RUN_OUTPUT}" == *'nothing to stop'* ]] && [[ "${RUN_CALLS}" != *'container stop'* ]]; }
@@ -186,10 +190,13 @@ run_case 'immediate exit after start is rejected' immediate_exit exit-after-star
 run_case 'immediate exit after replacement is rejected' immediate_exit exit-after-run --recreate
 run_case 'fresh create stability failure rolls back owned container, attachment, and network' fresh_create_stability_failure_rolls_back_owned_resources
 run_case 'pre-existing start stability failure rolls back only the new gateway attachment' preexisting_start_stability_failure_rolls_back_only_new_attachment
+run_case 'start fails when the connector remains unconnected without destroying it' start_unconnected_fails_without_destroying_container
 
-run_case 'status reports an absent container without touching the network' status_absent
-run_case 'status reports a matching running container' status_matching
-run_case 'status reports a mismatched container without failing' status_mismatched
+run_case 'status fails for an absent container without touching the network' status_absent
+run_case 'status reports a connected matching container' status_matching
+run_case 'status distinguishes a running but unconnected connector' status_unconnected
+run_case 'status fails for a stopped matching container without probing readiness' status_stopped
+run_case 'status fails for a mismatched container' status_mismatched
 run_case 'status does not require a provisioned token' status_requires_no_token
 run_case 'status rejects extra arguments' status_rejects_arguments
 

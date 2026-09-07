@@ -46,9 +46,9 @@ fi
 if [[ "${args}" == *' ssm get-command-invocation '* ]]; then
   [[ "${args}" == *'--output json'* ]] || exit 84
   case "${MOCK_TUNNEL_AWS_MODE}" in
-    success) printf '%s\n' '{"Status":"Success","StandardOutputContent":"Container hermes-cloudflared created and stable.","StandardErrorContent":""}' ;;
+    success) printf '%s\n' '{"Status":"Success","StandardOutputContent":"Container hermes-cloudflared created and connected.","StandardErrorContent":""}' ;;
     stop-success) printf '%s\n' '{"Status":"Success","StandardOutputContent":"Container hermes-cloudflared stopped.","StandardErrorContent":""}' ;;
-    status-success) printf '%s\n' '{"Status":"Success","StandardOutputContent":"Container hermes-cloudflared matches the expected tunnel contract and is running.","StandardErrorContent":""}' ;;
+    status-success) printf '%s\n' '{"Status":"Success","StandardOutputContent":"Container hermes-cloudflared matches the expected tunnel contract and is connected to Cloudflare.","StandardErrorContent":""}' ;;
     failure) printf '%s\n' '{"Status":"Failed","StandardOutputContent":"","StandardErrorContent":"container exited"}' ;;
     active) printf '%s\n' '{"Status":"InProgress","StandardOutputContent":"","StandardErrorContent":""}' ;;
     *) exit 85 ;;

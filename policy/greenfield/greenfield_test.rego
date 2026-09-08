@@ -9,7 +9,6 @@ resource "aws_route" "default_ipv4" {}
 resource "aws_route_table_association" "public_egress" {}
 resource "aws_security_group" "host" {
   ingress = []
-  egress = []
 }
 resource "aws_vpc_security_group_egress_rule" "https" {
   security_group_id = aws_security_group.host.id
@@ -93,6 +92,14 @@ test_greenfield_secure_contract_is_allowed if {
 	config := parse_config("hcl2", secure_greenfield_hcl)
 
 	count(deny_greenfield) == 0 with input as config
+}
+
+test_greenfield_empty_inline_egress_declaration_is_denied if {
+	mutated := replace(secure_greenfield_hcl, "  ingress = []", `  ingress = []
+  egress = []`)
+	config := parse_config("hcl2", mutated)
+
+	"Greenfield security groups must not declare inline egress when standalone rules are used" in deny_greenfield with input as config
 }
 
 test_greenfield_preexisting_admin_instance_profile_is_denied if {
@@ -316,7 +323,7 @@ resource "aws_security_group" "host" {
 }
 `)
 
-	"Greenfield security groups must have zero inline egress rules" in deny_greenfield with input as config
+	"Greenfield security groups must not declare inline egress when standalone rules are used" in deny_greenfield with input as config
 }
 
 test_greenfield_missing_imdsv2_is_denied if {

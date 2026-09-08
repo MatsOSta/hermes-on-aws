@@ -186,10 +186,10 @@ deny_greenfield contains "Greenfield security groups must have zero ingress rule
 	count(object.get(sg, "ingress", [])) > 0
 }
 
-deny_greenfield contains "Greenfield security groups must have zero inline egress rules" if {
+deny_greenfield contains "Greenfield security groups must not declare inline egress when standalone rules are used" if {
 	some name
 	some sg in resources("aws_security_group")[name]
-	count(object.get(sg, "egress", [])) > 0
+	object.get(sg, "egress", null) != null
 }
 
 deny_greenfield contains "Greenfield standalone ingress rules are forbidden" if {

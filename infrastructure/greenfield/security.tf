@@ -4,7 +4,6 @@ resource "aws_security_group" "host" {
   vpc_id      = aws_vpc.deployment.id
 
   ingress = []
-  egress  = []
 
   tags = {
     Name       = "${var.deployment_id}-host"

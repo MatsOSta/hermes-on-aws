@@ -39,7 +39,8 @@ parameterized deployment.
 The active shape is a `10.42.0.0/16` VPC across two availability zones. Two
 edge subnets share an internet-gateway route; two workload subnets have only
 the VPC-local route. The Hermes `t4g.medium` Amazon Linux 2023 host is in edge A
-with a public address, no inbound security-group rules, HTTPS egress, IMDSv2,
+with a public address, no inbound security-group rules, HTTPS egress plus
+bounded Cloudflare Tunnel TCP/UDP 7844 egress, IMDSv2,
 an encrypted 30 GiB gp3 root volume, and Systems Manager access through its
 instance role. Hermes runs in Docker with only `/var/lib/hermes:/opt/data`
 mounted and no published ports.

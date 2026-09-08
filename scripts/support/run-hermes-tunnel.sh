@@ -10,10 +10,13 @@ readonly GATEWAY_CONTAINER_NAME='hermes-gateway'
 readonly TOKEN_DIR='/var/lib/hermes/cloudflare-tunnel'
 readonly TOKEN_FILE="${TOKEN_DIR}/token"
 readonly TOKEN_MOUNT_PATH='/run/secrets/cloudflared-token'
+readonly METRICS_ADDRESS='127.0.0.1:2000'
 # Real tunnel tokens are a few hundred bytes; this bound only rejects
 # pathological input and is never used to echo the token itself.
 readonly TOKEN_MAX_BYTES=4096
 readonly STABILITY_SECONDS="${HERMES_TUNNEL_STABILITY_SECONDS:-3}"
+readonly READINESS_ATTEMPTS="${HERMES_TUNNEL_READINESS_ATTEMPTS:-12}"
+readonly READINESS_INTERVAL_SECONDS="${HERMES_TUNNEL_READINESS_INTERVAL_SECONDS:-5}"
 
 if [[ "$(id -u)" != 0 ]]; then
   echo 'Hermes tunnel runtime must be run as root.' >&2
@@ -41,6 +44,8 @@ case "${subcommand}" in
     ;;
 esac
 [[ "${STABILITY_SECONDS}" =~ ^[0-9]+$ ]] || { echo 'Invalid stability interval.' >&2; exit 2; }
+[[ "${READINESS_ATTEMPTS}" =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid readiness attempt count.' >&2; exit 2; }
+[[ "${READINESS_INTERVAL_SECONDS}" =~ ^[0-9]+$ ]] || { echo 'Invalid readiness interval.' >&2; exit 2; }
 
 require_docker() {
   command -v docker >/dev/null 2>&1 || { echo 'Docker is required.' >&2; exit 1; }
@@ -77,7 +82,7 @@ contract_mismatches() {
   existing_networks="$(docker container inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "${TUNNEL_CONTAINER_NAME}")"
 
   [[ "${existing_image}" == "${TUNNEL_IMAGE}" ]] || echo 'image is not the pinned cloudflared image'
-  [[ "${existing_command}" == '["tunnel","--no-autoupdate","run","--token-file","'"${TOKEN_MOUNT_PATH}"'"]' ]] || echo 'configured command is not the expected tunnel run command'
+  [[ "${existing_command}" == '["tunnel","--no-autoupdate","--metrics","'"${METRICS_ADDRESS}"'","run","--token-file","'"${TOKEN_MOUNT_PATH}"'"]' ]] || echo 'configured command is not the expected tunnel run command'
   [[ "${existing_binds}" == '["'"${TOKEN_FILE}"':'"${TOKEN_MOUNT_PATH}"':ro"]' ]] || echo 'bind mounts do not exactly match the read-only token file'
   [[ "${existing_restart_policy}" == unless-stopped ]] || echo 'restart policy is not unless-stopped'
   [[ "${existing_privileged}" == false ]] || echo 'privileged mode is not false'
@@ -107,23 +112,47 @@ verify_stable() {
   fi
 }
 
+probe_ready() {
+  docker exec "${TUNNEL_CONTAINER_NAME}" cloudflared tunnel --metrics "${METRICS_ADDRESS}" ready >/dev/null 2>&1
+}
+
+wait_until_ready() {
+  local attempt
+  for (( attempt = 1; attempt <= READINESS_ATTEMPTS; attempt++ )); do
+    if probe_ready; then
+      return 0
+    fi
+    (( attempt == READINESS_ATTEMPTS )) || sleep "${READINESS_INTERVAL_SECONDS}"
+  done
+  echo "Container ${TUNNEL_CONTAINER_NAME} is running but has no active Cloudflare edge connection." >&2
+  return 1
+}
+
 case "${subcommand}" in
   status)
     require_docker
     if ! inspect_tunnel_container 2>/dev/null; then
       echo "Container ${TUNNEL_CONTAINER_NAME} does not exist."
-      exit 0
+      exit 1
     fi
     running="$(docker container inspect --format '{{.State.Running}}' "${TUNNEL_CONTAINER_NAME}")"
     state='stopped'
     [[ "${running}" != true ]] || state='running'
-    if mismatch_output="$(contract_mismatches)" && [[ -z "${mismatch_output}" ]]; then
-      echo "Container ${TUNNEL_CONTAINER_NAME} matches the expected tunnel contract and is ${state}."
-    else
+    if ! mismatch_output="$(contract_mismatches)" || [[ -n "${mismatch_output}" ]]; then
       echo "Container ${TUNNEL_CONTAINER_NAME} exists but does not match the expected tunnel contract (state: ${state})."
       [[ -z "${mismatch_output:-}" ]] || printf -- '- %s\n' "${mismatch_output}"
+      exit 1
     fi
-    exit 0
+    if [[ "${running}" != true ]]; then
+      echo "Container ${TUNNEL_CONTAINER_NAME} matches the expected tunnel contract but is stopped."
+      exit 1
+    fi
+    if probe_ready; then
+      echo "Container ${TUNNEL_CONTAINER_NAME} matches the expected tunnel contract and is connected to Cloudflare."
+      exit 0
+    fi
+    echo "Container ${TUNNEL_CONTAINER_NAME} matches the expected tunnel contract and is running but unconnected."
+    exit 1
     ;;
   stop)
     require_docker
@@ -308,7 +337,8 @@ if [[ "${tunnel_exists}" == true ]]; then
         report_owned_rollback false
         exit 1
       fi
-      echo "Container ${TUNNEL_CONTAINER_NAME} retained and stable."
+      wait_until_ready || exit 1
+      echo "Container ${TUNNEL_CONTAINER_NAME} retained and connected."
       exit 0
     fi
     if ! docker container start "${TUNNEL_CONTAINER_NAME}" >/dev/null; then
@@ -320,7 +350,8 @@ if [[ "${tunnel_exists}" == true ]]; then
       report_owned_rollback false
       exit 1
     fi
-    echo "Container ${TUNNEL_CONTAINER_NAME} started and stable."
+    wait_until_ready || exit 1
+    echo "Container ${TUNNEL_CONTAINER_NAME} started and connected."
     exit 0
   fi
 fi
@@ -335,7 +366,7 @@ if ! docker run -d \
   --read-only \
   --volume "${TOKEN_FILE}:${TOKEN_MOUNT_PATH}:ro" \
   "${TUNNEL_IMAGE}" \
-  tunnel --no-autoupdate run --token-file "${TOKEN_MOUNT_PATH}" >/dev/null; then
+  tunnel --no-autoupdate --metrics "${METRICS_ADDRESS}" run --token-file "${TOKEN_MOUNT_PATH}" >/dev/null; then
   echo "Unable to create container ${TUNNEL_CONTAINER_NAME}." >&2
   report_owned_rollback false
   exit 1
@@ -344,4 +375,5 @@ if ! verify_stable create; then
   report_owned_rollback true
   exit 1
 fi
-echo "Container ${TUNNEL_CONTAINER_NAME} created and stable."
+wait_until_ready || exit 1
+echo "Container ${TUNNEL_CONTAINER_NAME} created and connected."

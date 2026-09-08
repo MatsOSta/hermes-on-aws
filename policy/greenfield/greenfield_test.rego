@@ -12,10 +12,44 @@ resource "aws_security_group" "host" {
   egress = []
 }
 resource "aws_vpc_security_group_egress_rule" "https" {
+  security_group_id = aws_security_group.host.id
+  description = "Outbound HTTPS only"
   ip_protocol = "tcp"
   from_port = 443
   to_port = 443
   cidr_ipv4 = "0.0.0.0/0"
+}
+resource "aws_vpc_security_group_egress_rule" "cloudflare_tunnel_tcp_region1" {
+  security_group_id = aws_security_group.host.id
+  description = "Cloudflare Tunnel HTTP2 region 1"
+  ip_protocol = "tcp"
+  from_port = 7844
+  to_port = 7844
+  cidr_ipv4 = "198.41.192.0/24"
+}
+resource "aws_vpc_security_group_egress_rule" "cloudflare_tunnel_tcp_region2" {
+  security_group_id = aws_security_group.host.id
+  description = "Cloudflare Tunnel HTTP2 region 2"
+  ip_protocol = "tcp"
+  from_port = 7844
+  to_port = 7844
+  cidr_ipv4 = "198.41.200.0/24"
+}
+resource "aws_vpc_security_group_egress_rule" "cloudflare_tunnel_udp_region1" {
+  security_group_id = aws_security_group.host.id
+  description = "Cloudflare Tunnel QUIC region 1"
+  ip_protocol = "udp"
+  from_port = 7844
+  to_port = 7844
+  cidr_ipv4 = "198.41.192.0/24"
+}
+resource "aws_vpc_security_group_egress_rule" "cloudflare_tunnel_udp_region2" {
+  security_group_id = aws_security_group.host.id
+  description = "Cloudflare Tunnel QUIC region 2"
+  ip_protocol = "udp"
+  from_port = 7844
+  to_port = 7844
+  cidr_ipv4 = "198.41.200.0/24"
 }
 data "aws_ssm_parameter" "al2023_arm64" {}
 data "aws_iam_policy_document" "host_assume_role" {
@@ -256,7 +290,7 @@ resource "aws_vpc_security_group_egress_rule" "bad" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_ssh_key_is_denied if {
@@ -363,7 +397,7 @@ resource "aws_security_group_rule" "http" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_null_ssh_key_is_allowed if {
@@ -417,7 +451,7 @@ resource "aws_vpc_security_group_egress_rule" "ipv6" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_prefix_list_egress_is_denied if {
@@ -430,7 +464,7 @@ resource "aws_vpc_security_group_egress_rule" "prefix" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_referenced_security_group_egress_is_denied if {
@@ -443,7 +477,7 @@ resource "aws_vpc_security_group_egress_rule" "peer" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_combined_ipv4_and_peer_egress_is_denied if {
@@ -457,7 +491,7 @@ resource "aws_vpc_security_group_egress_rule" "peer" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_legacy_peer_egress_is_denied if {
@@ -472,7 +506,7 @@ resource "aws_security_group_rule" "peer" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }
 
 test_greenfield_legacy_self_egress_is_denied if {
@@ -487,5 +521,5 @@ resource "aws_security_group_rule" "self" {
 }
 `)
 
-	"Greenfield egress rules must be IPv4 TCP/443 only" in deny_greenfield with input as config
+	"Greenfield egress rules must exactly match the reviewed HTTPS and Cloudflare Tunnel rules" in deny_greenfield with input as config
 }

@@ -122,7 +122,9 @@ plan preflights and requires two distinct confirmations before deleting the
 host/data and state foundation. See the
 [greenfield operator runbook](docs/greenfield-operations.md) for the exact
 workflow, SSM time bounds, mount contract, and recovery boundary.
-For the optional LINE integration, follow the dedicated
+For the optional LINE integration, follow the end-to-end
+[LINE onboarding runbook](docs/line-onboarding.md). Its transport-specific steps
+defer to the dedicated
 [Cloudflare named-tunnel runbook](docs/line-cloudflare-tunnel.md).
 
 ## Migration brakes

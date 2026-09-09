@@ -129,7 +129,8 @@ line_install_records_restricted_truthful_state() {
   [[ "${RUN_OUTPUT}" == *'[complete] Host preparation: verified by this run'* ]] || return
   [[ "${RUN_OUTPUT}" == *'[pending] Secure LINE runtime configuration; run:'* ]] || return
   [[ "${RUN_OUTPUT}" == *'./hermes.sh configure-line hms-abcdef123456'* ]] || return
-  [[ "${RUN_OUTPUT}" == *'[pending] Cloudflare tunnel and hostname provisioning (#47)'* ]] || return
+  [[ "${RUN_OUTPUT}" == *'[pending] Cloudflare tunnel and hostname provisioning; after starting the gateway, run:'* ]] || return
+  [[ "${RUN_OUTPUT}" == *'./hermes.sh configure-tunnel hms-abcdef123456'* ]] || return
   [[ "${RUN_OUTPUT}" == *'[unverified] Provider-console settings and live message acceptance (#49)'* ]] || return
   [[ "${RUN_OUTPUT}" != *'LINE ready'* ]]
 }

@@ -6,10 +6,10 @@ separates the one-time deployment/channel work from the much shorter repeat-user
 flow so later operators do not have to reconstruct the pilot from conversation
 context.
 
-This repository is still an operator-assisted Stage 1 system. Commands described
-as **proposed automation** do not exist yet. Use only the **current procedure**
-until the linked implementation work is merged and the pinned Hermes image is
-updated.
+This repository is an operator-assisted Stage 1 system. Use only commands marked
+as available in the operator interface below; later pairing and live-acceptance
+work remains proposed until its linked implementation is merged and the pinned
+Hermes image is updated.
 
 ## Expected steady-state architecture
 
@@ -206,28 +206,33 @@ Start the gateway:
 ./hermes.sh start-gateway "$DEPLOYMENT_ID"
 ```
 
-In the Cloudflare dashboard:
-
-1. Create a remotely managed named tunnel dedicated to this deployment.
-2. Create an opaque, non-identifying hostname such as
-   `edge-<random>.example.com`.
-3. Route its published application to:
-
-   ```text
-   http://hermes-gateway:8646
-   ```
-
-Provision the tunnel token through the hidden interactive procedure in
-[line-cloudflare-tunnel.md](line-cloudflare-tunnel.md#provision-the-tunnel-token-without-exposing-it).
-Then run:
+Run the bounded provisioning phase:
 
 ```sh
-./hermes.sh start-tunnel "$DEPLOYMENT_ID"
+./hermes.sh configure-tunnel "$DEPLOYMENT_ID"
+```
+
+Before the run, issue a temporary API token scoped only to the intended account
+and zone with **Account / Cloudflare Tunnel / Edit**, **Zone / DNS / Edit**, and
+**Zone / Zone / Read**. Enter it only at the remote hidden prompt. The command
+generates an opaque hostname, creates or verifies the dedicated remotely managed
+tunnel, exact ingress and proxied CNAME, stores the connector credential directly
+on the encrypted data volume, and starts the connector through the existing
+metrics-gated runtime helper. It prints the resulting public HTTPS origin without
+printing either credential. Revoke the temporary API token after success.
+
+Then verify independently:
+
+```sh
 ./hermes.sh status-tunnel "$DEPLOYMENT_ID"
 ```
 
 `status-tunnel` must report a contract-matching container with an active edge
-connection. A running container without an active connection is not ready.
+connection. A running container without an active connection is not ready. The
+provisioning command never introduces an inbound security-group rule or Docker
+host-port publication. See
+[line-cloudflare-tunnel.md](line-cloudflare-tunnel.md#create-or-verify-the-remote-tunnel-and-route)
+for conflict, rerun, credential rotation, revocation, and recovery boundaries.
 
 ## 5. Verify public health
 
@@ -473,9 +478,18 @@ printing credential values. The helper explicitly reports provider-console
 settings as **unverified**; it does not claim tunnel health or a live message
 round trip.
 
-This foundation does not automate Cloudflare mutation or claim that LINE is
-ready. Continue with the current tunnel, authorization, and acceptance
-procedures in this runbook until the separately tracked phases are implemented.
+The bounded Cloudflare phase is also available:
+
+```sh
+./hermes.sh configure-tunnel <deployment-id>
+```
+
+It accepts no local credentials, uses a remote hidden prompt for the scoped API
+token, verifies exact account/zone ownership before mutation, creates or retains
+one opaque hostname and remotely managed tunnel, performs exact configuration
+and DNS read-back, and starts the connector through the metrics-gated helper.
+Neither command claims that LINE is ready; authorization and live acceptance
+remain separate phases.
 
 `--platform line` should be canonical because it scales to future transports and
 makes intent explicit. `-line` should not be used: conventional long options
@@ -508,10 +522,10 @@ checklist for the unavoidable provider-console steps.
 14. Be idempotent and resumable; never replace a mismatched container, token,
     hostname, or channel configuration without an explicit reviewed action.
 
-Cloudflare provisioning should be a separate bounded phase or subcommand. It
-requires a least-privilege Cloudflare API token scoped to the intended account
-and zone, and must not turn the broad install command into an unreviewed secret-
-or DNS-mutation path.
+Cloudflare provisioning is a separate bounded subcommand. It requires a
+least-privilege Cloudflare API token scoped to the intended account and zone and
+does not turn the broad install command into an unreviewed secret- or
+DNS-mutation path.
 
 ## Native LINE pairing should perform
 

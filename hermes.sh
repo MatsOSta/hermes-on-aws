@@ -25,6 +25,7 @@ Commands:
   install <id> --line | -l
                         Record LINE intent, prepare the host, and report pending phases
   configure-line <id>   Securely configure LINE in a remote interactive SSM session
+  configure-tunnel <id> Securely provision and verify the bounded Cloudflare tunnel
   start-gateway <id> [--recreate]
                         Safely start/retain the gateway; explicitly replace with --recreate
   start-tunnel <id> [--recreate]
@@ -92,6 +93,11 @@ case "${command_name}" in
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }
     deployment_id="$(resolve_deployment_target "$2")"
     exec "${REPO_ROOT}/scripts/configure-line.sh" "${deployment_id}"
+    ;;
+  configure-tunnel)
+    [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+    deployment_id="$(resolve_deployment_target "$2")"
+    exec "${REPO_ROOT}/scripts/configure-tunnel.sh" "${deployment_id}"
     ;;
   deploy|teardown|purge|start|stop|ssm|logs|status-tunnel|stop-tunnel)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }

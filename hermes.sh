@@ -24,6 +24,7 @@ Commands:
   install <id> --platform line
   install <id> --line | -l
                         Record LINE intent, prepare the host, and report pending phases
+  configure-line <id>   Securely configure LINE in a remote interactive SSM session
   start-gateway <id> [--recreate]
                         Safely start/retain the gateway; explicitly replace with --recreate
   start-tunnel <id> [--recreate]
@@ -86,6 +87,11 @@ case "${command_name}" in
       exec "${REPO_ROOT}/scripts/install.sh" "${deployment_id}" "${install_platform}"
     fi
     exec "${REPO_ROOT}/scripts/install.sh" "${deployment_id}"
+    ;;
+  configure-line)
+    [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+    deployment_id="$(resolve_deployment_target "$2")"
+    exec "${REPO_ROOT}/scripts/configure-line.sh" "${deployment_id}"
     ;;
   deploy|teardown|purge|start|stop|ssm|logs|status-tunnel|stop-tunnel)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }

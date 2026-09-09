@@ -101,6 +101,16 @@ Install the host prerequisites and pinned Hermes image:
 ./hermes.sh install "$DEPLOYMENT_ID"
 ```
 
+For a LINE deployment, select the platform intent explicitly instead:
+
+```sh
+./hermes.sh install "$DEPLOYMENT_ID" --platform line
+```
+
+The LINE form records no secrets and reports later configuration and live checks
+as pending or unverified; follow the [LINE onboarding runbook](line-onboarding.md).
+The generic form retains its existing behavior.
+
 `install` discovers exactly one attached data volume matching the deployment,
 name, and instance. On the host, the helper resolves the EBS ID through the
 Nitro device serial instead of assuming an NVMe device name. It accepts only an

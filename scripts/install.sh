@@ -6,8 +6,17 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 readonly HERMES_IMAGE='nousresearch/hermes-agent@sha256:f5efd66dfdc0a434adf20af4030ac856eea6631405f7d44a827c6d7a76bf083e'
+readonly PLATFORM_STATE_HELPER="${REPO_ROOT}/scripts/support/install-platform-state.py"
 deployment_id="${1:-}"
+platform="${2:-}"
+(( $# <= 2 )) || die 'internal install usage error'
 validate_deployment_id "${deployment_id}"
+if [[ -n "${platform}" ]]; then
+  [[ "${platform}" == 'line' ]] || die "unsupported install platform: ${platform}"
+  require_tools python3
+  [[ -f "${PLATFORM_STATE_HELPER}" ]] || die "required platform state helper not found: ${PLATFORM_STATE_HELPER}"
+  python3 "${PLATFORM_STATE_HELPER}" ensure "${OPERATOR_ROOT}" "${deployment_id}" "${platform}"
+fi
 aws_preflight
 require_tools jq base64 tr
 instance_id="$(instance_id_for "${deployment_id}")"
@@ -33,6 +42,25 @@ command_id="$(send_ssm_command "${instance_id}" "Mount Hermes data volume and in
   "docker pull '${HERMES_IMAGE}'")"
 wait_and_print_ssm_command "${command_id}" "${instance_id}" \
   "${HERMES_SSM_DEADLINE_SECONDS:-600}" "${HERMES_SSM_POLL_INTERVAL_SECONDS:-5}"
+
+if [[ "${platform}" == 'line' ]]; then
+  python3 "${PLATFORM_STATE_HELPER}" mark-host-prepared "${OPERATOR_ROOT}" "${deployment_id}" "${platform}"
+  cat <<EOF
+
+LINE installation progress for ${deployment_id}:
+  [complete] Platform intent: line
+  [complete] Host preparation: verified by this run
+  [pending] Secure LINE runtime configuration (#46)
+  [pending] Cloudflare tunnel and hostname provisioning (#47)
+  [pending] Unauthorized-DM pairing support in the pinned Hermes image (#48)
+  [unverified] Provider-console settings and live message acceptance (#49)
+
+This command records no secrets and does not claim LINE readiness. Continue with:
+  docs/line-onboarding.md
+
+EOF
+  exit 0
+fi
 
 cat <<EOF
 

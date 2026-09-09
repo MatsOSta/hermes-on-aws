@@ -21,6 +21,9 @@ Commands:
   teardown <id>         Destroy the host only
   purge <id>            Destroy the host and state foundation
   install <id>          Install Docker and pull Hermes image (step 1/3)
+  install <id> --platform line
+  install <id> --line | -l
+                        Record LINE intent, prepare the host, and report pending phases
   start-gateway <id> [--recreate]
                         Safely start/retain the gateway; explicitly replace with --recreate
   start-tunnel <id> [--recreate]
@@ -70,7 +73,21 @@ case "${command_name}" in
     deployment_id="$(resolve_deployment_target "$2")"
     exec "${REPO_ROOT}/scripts/start-tunnel.sh" "${deployment_id}" "${3:-}"
     ;;
-  deploy|teardown|purge|install|start|stop|ssm|logs|status-tunnel|stop-tunnel)
+  install)
+    install_platform=''
+    case "$#:${3:-}:${4:-}" in
+      2::) ;;
+      3:--line:|3:-l:) install_platform='line' ;;
+      4:--platform:line) install_platform='line' ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    deployment_id="$(resolve_deployment_target "$2")"
+    if [[ -n "${install_platform}" ]]; then
+      exec "${REPO_ROOT}/scripts/install.sh" "${deployment_id}" "${install_platform}"
+    fi
+    exec "${REPO_ROOT}/scripts/install.sh" "${deployment_id}"
+    ;;
+  deploy|teardown|purge|start|stop|ssm|logs|status-tunnel|stop-tunnel)
     [[ $# -eq 2 ]] || { usage >&2; exit 2; }
     deployment_id="$(resolve_deployment_target "$2")"
     exec "${REPO_ROOT}/scripts/${command_name}.sh" "${deployment_id}"

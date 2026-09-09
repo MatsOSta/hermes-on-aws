@@ -81,12 +81,15 @@ From the operator workstation, using the repository wrapper:
 ```sh
 DEPLOYMENT_ID="$(./hermes.sh id --alias <local-alias>)"
 ./hermes.sh deploy "$DEPLOYMENT_ID"
-./hermes.sh install "$DEPLOYMENT_ID"
+./hermes.sh install "$DEPLOYMENT_ID" --platform line
 ```
 
-`deploy` includes reviewed saved-plan display and typed human approval. `install`
-mounts the dedicated encrypted data volume, installs Docker, and pulls the pinned
-Hermes image. Follow the exact safety and credential prerequisites in the
+`deploy` includes reviewed saved-plan display and typed human approval. The
+platform-aware `install` records only non-secret LINE intent in restricted local
+operator state, mounts the dedicated encrypted data volume, installs Docker,
+pulls the pinned Hermes image, and reports completed, pending, and unverified
+phases. It does not collect credentials or claim LINE readiness. Follow the
+exact safety and credential prerequisites in the
 [greenfield operator runbook](greenfield-operations.md).
 
 Do not create an inbound rule or publish port 8646.
@@ -428,18 +431,30 @@ memory and conversation environment before approving them.
 
 # Desired installation and pairing flow
 
-The target operator interface is platform-aware installation:
+The platform-aware operator interface is now:
 
 ```sh
 ./hermes.sh install <deployment-id> --platform line
 ```
 
-Accepted convenience aliases may be:
+The accepted convenience aliases are:
 
 ```sh
 ./hermes.sh install <deployment-id> --line
 ./hermes.sh install <deployment-id> -l
 ```
+
+All three spellings resolve to the same canonical `line` mode. The command
+records a versioned, non-secret intent file under
+`~/hermes-operator/install-platforms/`, with directory mode `0700` and file mode
+`0600`. Matching reruns retain that state. Malformed, unsafe, or contradictory
+state fails before AWS is contacted. After revalidating host preparation, the
+command reports the still-pending secure configuration, tunnel, pairing, and
+live-acceptance phases.
+
+This foundation does not accept secrets, automate provider mutations, or claim
+that LINE is ready. Continue with the current manual procedure in this runbook
+until the separately tracked phases are implemented.
 
 `--platform line` should be canonical because it scales to future transports and
 makes intent explicit. `-line` should not be used: conventional long options

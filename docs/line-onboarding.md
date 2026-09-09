@@ -452,9 +452,30 @@ state fails before AWS is contacted. After revalidating host preparation, the
 command reports the still-pending secure configuration, tunnel, pairing, and
 live-acceptance phases.
 
-This foundation does not accept secrets, automate provider mutations, or claim
-that LINE is ready. Continue with the current manual procedure in this runbook
-until the separately tracked phases are implemented.
+The secure runtime phase is now available as a separate bounded command:
+
+```sh
+./hermes.sh configure-line <deployment-id>
+```
+
+The command accepts no credential options. It sends only the reviewed helper to
+the instance, then opens an interactive SSM session. Enter the channel access
+token and channel secret at the remote hidden prompts and the public HTTPS base
+URL at the visible prompt. The helper validates without echoing secrets,
+atomically updates `/var/lib/hermes/.env` at mode `0600`, enables LINE through
+the pinned Hermes image's `config set` command, and calls LINE's supported API
+to write, exactly read back, and test `<base-url>/line/webhook`.
+
+A rerun with matching values is safe. Any mismatched existing LINE value,
+symlinked or permissive environment file, malformed URL, API failure, or
+read-back mismatch fails closed and prints a corrective next step without
+printing credential values. The helper explicitly reports provider-console
+settings as **unverified**; it does not claim tunnel health or a live message
+round trip.
+
+This foundation does not automate Cloudflare mutation or claim that LINE is
+ready. Continue with the current tunnel, authorization, and acceptance
+procedures in this runbook until the separately tracked phases are implemented.
 
 `--platform line` should be canonical because it scales to future transports and
 makes intent explicit. `-line` should not be used: conventional long options

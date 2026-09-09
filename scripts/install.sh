@@ -50,7 +50,8 @@ if [[ "${platform}" == 'line' ]]; then
 LINE installation progress for ${deployment_id}:
   [complete] Platform intent: line
   [complete] Host preparation: verified by this run
-  [pending] Secure LINE runtime configuration (#46)
+  [pending] Secure LINE runtime configuration; run:
+            ./hermes.sh configure-line ${deployment_id}
   [pending] Cloudflare tunnel and hostname provisioning (#47)
   [pending] Unauthorized-DM pairing support in the pinned Hermes image (#48)
   [unverified] Provider-console settings and live message acceptance (#49)

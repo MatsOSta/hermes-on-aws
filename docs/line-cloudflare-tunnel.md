@@ -5,6 +5,11 @@ managed Cloudflare named tunnel. It adds no inbound security-group rule and
 publishes no Docker host port. `cloudflared` reaches the gateway by Docker DNS
 on the private `hermes-tunnel-net` bridge.
 
+This document owns the tunnel's network, credential, container, and recovery
+contracts. For fresh LINE channel setup, user-ID discovery, authorization,
+first-message onboarding, and the proposed platform-aware installer/pairing
+flow, follow the [LINE onboarding runbook](line-onboarding.md).
+
 ## Required outbound network path
 
 Cloudflare Tunnel requires outbound port 7844 to its global edge endpoints:

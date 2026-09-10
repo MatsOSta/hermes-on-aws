@@ -12,6 +12,7 @@ Usage: ./hermes.sh <command> [deployment-id] [options]
 
 Commands:
   help                  Print this usage
+  version               Report reviewed source and pinned Hermes image
   id [--alias <alias>]  Generate an ID; optionally register its local alias
   alias set <alias> <id>
   alias list
@@ -46,6 +47,10 @@ command_name="${1:-help}"
 case "${command_name}" in
   help|-h|--help)
     usage
+    ;;
+  version)
+    [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+    exec "${REPO_ROOT}/scripts/version.sh"
     ;;
   id)
     [[ $# -eq 1 || ( $# -eq 3 && "$2" == '--alias' ) ]] || { usage >&2; exit 2; }

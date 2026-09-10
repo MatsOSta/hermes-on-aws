@@ -159,6 +159,18 @@ The replacement reuses `/var/lib/hermes`; it does not erase the data volume.
 
 ## Observe and control
 
+Before installation or a live acceptance session, record the exact reviewed
+checkout and immutable Hermes runtime artifact without contacting AWS:
+
+```sh
+./hermes.sh version
+```
+
+The command prints stable `git_commit`, `git_tracked_dirty`, and `hermes_image`
+key/value lines. Dirty-state reporting covers tracked content only, so local
+untracked scratch files do not change provenance. The image is read from the
+gateway runtime helper rather than copied into the reporting command.
+
 ```sh
 ./hermes.sh status "$DEPLOYMENT_ID"  # EC2, SSM, Docker, and gateway status
 ./hermes.sh status                    # same deployment summary as list

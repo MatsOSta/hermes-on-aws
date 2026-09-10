@@ -168,11 +168,13 @@ See [SECURITY.md](SECURITY.md) for limitations and reporting guidance.
 Safe local checks do not need AWS credentials:
 
 ```sh
+./hermes.sh version
 export CONFTEST_IMAGE='docker.io/openpolicyagent/conftest@sha256:b451f93ec386c25a4ed5aa4b835605dd4aee693374b619f5dc92374afcb6c296'
 bash -n hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 shellcheck hermes.sh scripts/*.sh scripts/support/*.sh tests/*.sh tests/support/*.sh infrastructure/aws/*.sh
 python3 -m py_compile scripts/support/deployment-aliases.py
 tests/operator_contract_test.sh
+tests/version_command_test.sh
 tests/deployment_alias_test.sh
 tests/operator_safety_test.sh
 tests/saved_plan_state_test.sh

@@ -40,6 +40,72 @@ The reviewed boundary is:
 For the network, token, container, rotation, and rollback contracts, also read
 [LINE webhook through a Cloudflare named tunnel](line-cloudflare-tunnel.md).
 
+## Quick path: one family-member acceptance message
+
+**Acceptance goal:** one pre-approved, non-technical family member sends a LINE
+message and receives **exactly one Hermes reply**, with no undocumented operator
+steps. This is a short acceptance path for an already configured deployment; it
+is not a replacement for the detailed procedures below.
+
+### Operator-only preparation
+
+1. Complete the [fresh deployment and LINE tie-in](#current-procedure-fresh-deployment-and-line-tie-in), including the provider-console settings, webhook verification, and public health check.
+2. Pre-approve exactly one person out of band for enrollment; this means the
+   person's identity is approved for the enrollment process, not that they are
+   already authorized in Hermes. Provide the participant with the intended LINE
+   Official Account name and its link or QR code. Explain that the first
+   enrollment message is only for discovery and may receive no Hermes reply
+   under the current pinned behavior.
+3. Use the [current first-user discovery and authorization procedure](#7-discover-and-authorize-the-first-user). Confirm the sender's identity before
+   appending the provider-scoped ID; do not use `LINE_ALLOW_ALL_USERS`, replace
+   existing allowlist entries, or use the unavailable pairing flow.
+4. Complete the required gateway restart and health check in that section.
+
+Do not repeat secret-entry instructions here: follow [Run the interactive Hermes
+setup](#3-run-the-interactive-hermes-setup) and its hidden-prompt and permission
+requirements.
+
+### Family-member steps
+
+Give the approved person only these instructions, using the Official Account
+name and link or QR code provided by the operator:
+
+1. Add the existing LINE Official Account.
+2. When the operator requests enrollment, send one ordinary text message for
+   discovery. No Hermes reply is expected.
+3. Wait while the operator verifies authorization, restarts the gateway, and
+   confirms enrollment is complete.
+4. Send exactly one ordinary text message for acceptance after the operator
+   confirms enrollment is complete.
+5. Do not send another message until the operator records the result.
+
+The family member does not need AWS, Cloudflare, SSM, Docker, OpenTofu, Hermes
+configuration, a pairing code, or a user ID.
+
+### Live acceptance gates
+
+The operator must observe and record, without exposing secrets or user IDs:
+
+- the approved sender is the only newly authorized user;
+- LINE greeting and automatic responses are disabled;
+- the message produces exactly one context-appropriate Hermes reply and no
+  duplicate or LINE canned reply; and
+- the [full acceptance and restart/recovery checklist](#9-acceptance-and-restartrecovery)
+  is completed before declaring the integration ready.
+
+Static checks cannot prove this round trip. It is a human-operated live gate.
+The current adapter does **not** provide the proposed first-DM pairing-code flow;
+do not tell the family member to use `hermes pairing approve line`.
+
+### Stop conditions
+
+Stop without declaring success if the sender cannot be matched confidently, more
+than one unknown ID appears, the authorization or restart check fails, any
+credential would need to be pasted into chat or a command line, the message
+gets zero replies or more than one reply, a LINE canned response appears, or
+any listed live acceptance gate fails. Resume only through the detailed sections
+linked above; do not improvise an operator step.
+
 ## What happens once and what repeats
 
 ### Once per deployment and LINE channel

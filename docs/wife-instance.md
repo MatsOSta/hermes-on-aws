@@ -19,6 +19,53 @@ Cloudflare hostname and rewrite the webhook. Follow
 and first-user steps, using `configure-tunnel` then `configure-line` so
 `LINE_PUBLIC_URL` exists before secrets are stored.
 
+## Launch split
+
+### MUST be done before EC2 launch
+
+- Use a new greenfield ID. Do not reuse `hms-ae1485be4182` or the Telegram
+  main-agent host.
+- Operator workstation: reviewed AWS account `450895596262` in `eu-north-1`,
+  `AWS_PROFILE=platform-lab-tofu`, OpenTofu, jq.
+- Local alias may exist; deploy still takes the canonical `hms-` ID for both
+  typed approvals.
+- Stop at unexpected replacement, shared resources, IAM expansion, or a
+  network/security-boundary change in either saved plan.
+- Model, image generation, LINE channel, and Cloudflare token are not deploy
+  blockers. They happen after SSM Online.
+
+### MUST be done AFTER the instance is SSM Online
+
+- Record the LINE platform intent and prepare the host/image:
+
+  ```sh
+  ./hermes.sh install "$DEPLOYMENT_ID" --platform line
+  ```
+
+- Provision and verify the bounded Cloudflare tunnel and its new hostname:
+
+  ```sh
+  ./hermes.sh configure-tunnel "$DEPLOYMENT_ID"
+  ```
+
+- Securely configure LINE only after the public URL exists:
+
+  ```sh
+  ./hermes.sh configure-line "$DEPLOYMENT_ID"
+  ```
+
+  Enter secrets only through the command's hidden prompts. Never use
+  `LINE_ALLOW_ALL_USERS`; keep the first-user enrollment as the explicit
+  allowlist procedure until native LINE pairing is present in the pinned image.
+- In the interactive Hermes setup, configure `gpt-5.6-sol` via
+  `openai-codex`, the already-decided image-generation provider, default LINE
+  features, automatic memory, and the normal review cadence. Do not claim
+  image generation works until the selected provider is actually configured
+  and tested.
+- Verify tunnel readiness, public health, LINE console webhook settings, the
+  first-user allowlist, and a real message round trip. Treat each as pending
+  until independently confirmed.
+
 ## Product clues
 
 These are operator intent. Several are newer than this repository's

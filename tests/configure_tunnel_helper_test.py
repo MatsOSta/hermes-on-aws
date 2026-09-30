@@ -58,6 +58,55 @@ class ConfigureTunnelTests(unittest.TestCase):
             "warp-routing": {"enabled": True},
         }}, HOST))
 
+    def test_default_catchall_config_is_empty(self):
+        self.assertTrue(self.module._config_is_empty({}))
+        self.assertTrue(self.module._config_is_empty({"config": {}}))
+        self.assertTrue(self.module._config_is_empty({"config": {
+            "ingress": [{"service": "http_status:404", "originRequest": {"connectTimeout": 30}}],
+            "originRequest": {"keepAliveConnections": 100},
+            "warp-routing": {"enabled": False},
+        }}))
+        self.assertTrue(self.module._config_matches({"config": {
+            "ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8646", "originRequest": {"connectTimeout": 30}},
+                {"service": "http_status:404", "path": ""},
+            ],
+            "originRequest": {"keepAliveConnections": 100},
+        }}, HOST))
+        self.assertFalse(self.module._config_is_empty({"config": {
+            "ingress": [{"hostname": HOST, "service": "http://wrong:80"}, {"service": "http_status:404"}],
+        }}))
+        self.assertFalse(self.module._config_is_empty({"config": {
+            "ingress": [{"service": "http_status:404"}],
+            "warp-routing": {"enabled": True},
+        }}))
+
+    def test_resolve_zone_requires_exactly_one_match(self):
+        zone = {"id": ZONE, "name": "example.com", "account": {"id": ACCOUNT}}
+        api = FakeAPI([[zone]])
+        self.assertEqual(self.module.resolve_zone(api, "example.com"), (ACCOUNT, ZONE))
+        self.assertEqual(api.calls, [("GET", "/zones", None, {"name": "example.com"})])
+        with self.assertRaisesRegex(RuntimeError, "ambiguous"):
+            self.module.resolve_zone(FakeAPI([[]]), "example.com")
+        with self.assertRaisesRegex(RuntimeError, "ambiguous"):
+            self.module.resolve_zone(FakeAPI([[zone, dict(zone)]]), "example.com")
+        with self.assertRaisesRegex(RuntimeError, "malformed"):
+            self.module.resolve_zone(
+                FakeAPI([[{"id": ZONE, "name": "other.com", "account": {"id": ACCOUNT}}]]),
+                "example.com",
+            )
+
+    def test_config_shape_redacts_values(self):
+        shape = self.module._config_shape({"config": {
+            "ingress": [{"hostname": "secret.example.com", "service": "http://127.0.0.1:9"}],
+            "warp-routing": {"enabled": True, "secret": "should-not-leak"},
+            "originRequest": {"httpHostHeader": "should-not-leak"},
+        }})
+        self.assertNotIn("should-not-leak", shape)
+        self.assertNotIn("secret.example.com", shape)
+        self.assertNotIn("127.0.0.1", shape)
+        self.assertIn("'enabled': True", shape)
+
     def test_creation_mutates_only_exact_resources_and_reads_back(self):
         tunnel = {
             "id": TUNNEL, "name": f"hermes-{DEPLOYMENT}",

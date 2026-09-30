@@ -280,7 +280,8 @@ Run the bounded provisioning phase:
 
 Before the run, issue a temporary API token scoped only to the intended account
 and zone with **Account / Cloudflare Tunnel / Edit**, **Zone / DNS / Edit**, and
-**Zone / Zone / Read**. Enter it only at the remote hidden prompt. The command
+**Zone / Zone / Read**. Enter the DNS zone name and that token only at the remote
+prompts; account and zone IDs are resolved from the API. The command
 generates an opaque hostname, creates or verifies the dedicated remotely managed
 tunnel, exact ingress and proxied CNAME, stores the connector credential directly
 on the encrypted data volume, and starts the connector through the existing

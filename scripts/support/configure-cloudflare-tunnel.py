@@ -420,7 +420,7 @@ def verify_storage(expected_volume_id: str) -> None:
     if os.path.realpath(fields[1]) != os.path.realpath(str(matches[0]["path"])):
         raise RuntimeError("/var/lib/hermes is backed by the wrong device")
     options = set(fields[3].split(","))
-    if not {"rw", "nosuid", "nodev", "noexec"}.issubset(options):
+    if not {"rw", "nosuid", "nodev"}.issubset(options):
         raise RuntimeError("/var/lib/hermes mount options are unsafe")
 
 

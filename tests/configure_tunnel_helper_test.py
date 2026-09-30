@@ -206,6 +206,21 @@ class ConfigureTunnelTests(unittest.TestCase):
                 )
         self.assertFalse(any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, *_ in api.calls))
 
+    def test_verify_storage_accepts_install_mount_options(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,nodev,relatime,seclabel\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            self.module.verify_storage("vol-0123456789abcdef0")
+
+    def test_verify_storage_rejects_missing_nodev(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,relatime\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            with self.assertRaisesRegex(RuntimeError, "mount options are unsafe"):
+                self.module.verify_storage("vol-0123456789abcdef0")
+
     def test_token_write_is_owner_only_and_mismatch_is_retained(self):
         with tempfile.TemporaryDirectory() as directory:
             token_path = Path(directory) / "token"

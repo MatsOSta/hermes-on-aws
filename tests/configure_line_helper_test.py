@@ -53,6 +53,21 @@ class ConfigureLineTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "wrong device"):
                 self.module.verify_storage("vol-0123456789abcdef0")
 
+    def test_verify_storage_accepts_install_mount_options(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,nodev,relatime,seclabel\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            self.module.verify_storage("vol-0123456789abcdef0")
+
+    def test_verify_storage_rejects_missing_nodev(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,relatime\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            with self.assertRaisesRegex(RuntimeError, "mount options are unsafe"):
+                self.module.verify_storage("vol-0123456789abcdef0")
+
     def test_webhook_write_is_read_back_before_test(self):
         client = mock.Mock()
         client.request.side_effect = [({}, 200), ({"endpoint": "https://edge.example.com/line/webhook", "active": True}, 200), ({"success": True}, 200)]

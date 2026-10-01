@@ -48,6 +48,12 @@ class ConfigureTunnelTests(unittest.TestCase):
             {"hostname": HOST, "service": "http://hermes-gateway:8646"},
             {"service": "http_status:404"},
         ])
+        self.assertTrue(self.module._config_is_legacy_gateway_port({"config": {
+            "ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8642"},
+                {"service": "http_status:404"},
+            ],
+        }}, HOST))
         self.assertEqual(self.module.desired_dns(TUNNEL, HOST), {
             "type": "CNAME", "name": HOST,
             "content": f"{TUNNEL}.cfargotunnel.com",
@@ -177,6 +183,39 @@ class ConfigureTunnelTests(unittest.TestCase):
             result = self.module.provision(api, DEPLOYMENT, ACCOUNT, ZONE, "example.com", state, lambda: "ffffffffffff")
         self.assertEqual(result["hostname"], HOST)
         self.assertFalse(any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, *_ in api.calls))
+
+    def test_legacy_8642_config_is_replaced(self):
+        state_data = {
+            "version": 1, "deployment_id": DEPLOYMENT, "account_id": ACCOUNT,
+            "zone_id": ZONE, "zone_name": "example.com", "tunnel_id": TUNNEL,
+            "tunnel_name": f"hermes-{DEPLOYMENT}", "hostname": HOST,
+        }
+        ingress = self.module.desired_ingress(HOST)
+        replies = [
+            {"status": "active"},
+            {"id": ZONE, "name": "example.com", "account": {"id": ACCOUNT}},
+            [{"id": TUNNEL, "name": f"hermes-{DEPLOYMENT}", "account_tag": ACCOUNT, "config_src": "cloudflare", "deleted_at": None}],
+            {"id": TUNNEL, "name": f"hermes-{DEPLOYMENT}", "account_tag": ACCOUNT, "config_src": "cloudflare", "deleted_at": None},
+            "connector-token-value-123",
+            {"config": {"ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8642"},
+                {"service": "http_status:404"},
+            ]}},
+            [dict(self.module.desired_dns(TUNNEL, HOST), id="dns-id")],
+            {},
+            {"config": {"ingress": ingress}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state.json"
+            self.module.write_state(state, state_data)
+            api = FakeAPI(replies)
+            result = self.module.provision(api, DEPLOYMENT, ACCOUNT, ZONE, "example.com", state, lambda: "ffffffffffff")
+        self.assertEqual(result["hostname"], HOST)
+        self.assertEqual([call for call in api.calls if call[0] in {"POST", "PUT", "PATCH", "DELETE"}], [
+            ("PUT", f"/accounts/{ACCOUNT}/cfd_tunnel/{TUNNEL}/configurations", {
+                "config": {"ingress": ingress},
+            }, None),
+        ])
 
     def test_conflicting_existing_config_stops_without_mutation(self):
         state_data = {

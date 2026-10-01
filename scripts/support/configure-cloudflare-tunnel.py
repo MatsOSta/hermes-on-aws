@@ -35,10 +35,13 @@ UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 ZONE_RE = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 HOST_LABEL_RE = re.compile(r"edge-[a-f0-9]{12}")
 
+GATEWAY_SERVICE = "http://hermes-gateway:8646"
+LEGACY_GATEWAY_SERVICE = "http://hermes-gateway:8642"
+
 
 def desired_ingress(hostname: str) -> list[dict[str, str]]:
     return [
-        {"hostname": hostname, "service": "http://hermes-gateway:8646"},
+        {"hostname": hostname, "service": GATEWAY_SERVICE},
         {"service": "http_status:404"},
     ]
 
@@ -240,6 +243,32 @@ def _config_matches(result: Any, hostname: str) -> bool:
     return normalized == desired_ingress(hostname)
 
 
+def _config_is_legacy_gateway_port(result: Any, hostname: str) -> bool:
+    if not isinstance(result, dict) or not isinstance(result.get("config"), dict):
+        return False
+    config = result["config"]
+    if set(config) - {"ingress", "originRequest", "warp-routing"}:
+        return False
+    if config.get("warp-routing") not in (None, {}, {"enabled": False}):
+        return False
+    ingress = config.get("ingress")
+    if not isinstance(ingress, list) or len(ingress) != 2:
+        return False
+    normalized = []
+    for rule in ingress:
+        if not isinstance(rule, dict):
+            return False
+        if set(rule) - {"hostname", "service", "originRequest", "path"}:
+            return False
+        if rule.get("path") not in (None, ""):
+            return False
+        normalized.append({key: rule[key] for key in ("hostname", "service") if key in rule})
+    return normalized == [
+        {"hostname": hostname, "service": LEGACY_GATEWAY_SERVICE},
+        {"service": "http_status:404"},
+    ]
+
+
 def _ingress_is_unconfigured(ingress: Any) -> bool:
     if ingress in (None, []):
         return True
@@ -435,7 +464,11 @@ def provision(
     configuration_path = f"/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations"
     configuration = api.request("GET", configuration_path)
     config_matches = _config_matches(configuration, hostname)
-    if not config_matches and not _config_is_empty(configuration):
+    if (
+        not config_matches
+        and not _config_is_empty(configuration)
+        and not _config_is_legacy_gateway_port(configuration, hostname)
+    ):
         raise RuntimeError(
             "published application configuration conflicts; no route was replaced "
             f"({_config_shape(configuration)})"

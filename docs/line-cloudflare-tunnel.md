@@ -72,6 +72,11 @@ the form `edge-<random>.<zone>`. Its only published application service is:
 http://hermes-gateway:8646
 ```
 
+LINE listens on gateway port 8646. Port 8642 is the loopback API, not LINE.
+Ingress to 8642 yields a public 502. A published route whose only difference is
+that mistaken 8642 origin is replaced on rerun; any other hostname-bearing or
+WARP-enabled config still fails closed.
+
 The command reads back the tunnel, ingress configuration, and proxied CNAME
 exactly before reporting success. Matching state is retained on rerun. A
 different account, zone, tunnel, hostname, DNS target, or service fails closed;

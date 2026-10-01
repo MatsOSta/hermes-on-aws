@@ -36,8 +36,8 @@ ZONE_RE = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+
 HOST_LABEL_RE = re.compile(r"edge-[a-f0-9]{12}")
 
 
-GATEWAY_SERVICE = "http://hermes-gateway:8642"
-LEGACY_GATEWAY_SERVICE = "http://hermes-gateway:8646"
+GATEWAY_SERVICE = "http://hermes-gateway:8646"
+LEGACY_GATEWAY_SERVICE = "http://hermes-gateway:8642"
 
 
 def desired_ingress(hostname: str) -> list[dict[str, str]]:

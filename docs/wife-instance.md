@@ -112,9 +112,10 @@ LINE secrets to debug the next fail-closed check.
 - `configure-tunnel` then `configure-line`. `LINE_PUBLIC_URL` is the visible
   prompt, not a `hermes.sh` flag. Value is `https://<edge-hex>.<zone>` with no
   path.
-- Pinned gateway listens on **8642**, not 8646. Ingress to 8646 yields Cloudflare
-  `502` even when `status-tunnel` is connected. Public health on this image is
-  `/health`, not `/line/webhook/health`.
+- LINE webhook listens on **8646** (all interfaces). **8642** is the loopback API
+  server, not LINE. Ingress to 8642 yields Cloudflare 502. After `configure-line`,
+  recreate the gateway then `start-tunnel` so LINE binds 8646. Public health is
+  `/line/webhook/health`.
 - Gateway may create `.env` and own `/var/lib/hermes` as non-root. Do not cat
   `.env`. Adopt regular-file mode 0600; do not require the mount root to be
   uid 0.

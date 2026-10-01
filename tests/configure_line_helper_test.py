@@ -44,6 +44,20 @@ class ConfigureLineTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must be a regular file"):
                 self.module._lock_env_permissions(7)
 
+    def test_update_env_accepts_non_root_data_dir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            requested = {
+                "LINE_CHANNEL_ACCESS_TOKEN": "token-value-1234567890",
+                "LINE_CHANNEL_SECRET": "a" * 32,
+                "LINE_PUBLIC_URL": "https://edge.example.com",
+            }
+            with mock.patch.object(self.module, "_read_env", return_value=([], {})):
+                self.module.update_env(path, requested)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("LINE_PUBLIC_URL=https://edge.example.com\n", text)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_validates_public_base_url(self):
         self.assertEqual(self.module.validate_public_url("https://edge.example.com"), "https://edge.example.com")
         for value in ("http://edge.example.com", "https://edge.example.com/path", "https://user@edge.example.com", "https://127.0.0.1"):

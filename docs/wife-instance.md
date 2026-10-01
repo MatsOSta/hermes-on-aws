@@ -98,3 +98,28 @@ host until a reviewed image and setup path land.
 3. Decide image-gen provider before deploy (Codex, Tool Gateway, or a
    separate key). Unknown is not "enable the toolset and hope".
 4. New greenfield deploy; smoketest host remains stopped until needed.
+
+## First-time pitfalls (2026 wife host)
+
+These are live mismatches between helpers and the pinned image. Fix the helper
+or run from the branch that already has the fix. Do not re-prompt Cloudflare or
+LINE secrets to debug the next fail-closed check.
+
+- Data-volume mount is `rw,nosuid,nodev` (no `noexec`). Helpers that require
+  `noexec` fail with `mount options are unsafe`. That fix is `d0ec1cb` on this
+  branch. Do not run `configure-line` / `configure-tunnel` from a master-based
+  branch that still requires `noexec`.
+- `configure-tunnel` then `configure-line`. `LINE_PUBLIC_URL` is the visible
+  prompt, not a `hermes.sh` flag. Value is `https://<edge-hex>.<zone>` with no
+  path.
+- Pinned gateway listens on **8642**, not 8646. Ingress to 8646 yields Cloudflare
+  `502` even when `status-tunnel` is connected. Public health on this image is
+  `/health`, not `/line/webhook/health`.
+- Gateway may create `.env` and own `/var/lib/hermes` as non-root. Do not cat
+  `.env`. Adopt regular-file mode 0600; do not require the mount root to be
+  uid 0.
+- `enable_line` is a throwaway container and does not restart `hermes-gateway`.
+  A pre-v12 `config.yaml` will not auto-migrate. LINE webhook 404 on 8642 is
+  separate from tunnel 502.
+- One new `edge-*` DNS CNAME per host is expected. Leave smoketest records.
+  Matching `configure-line` rerun is safe once values are saved.

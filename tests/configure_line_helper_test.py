@@ -19,6 +19,31 @@ class ConfigureLineTests(unittest.TestCase):
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)
 
+    def test_lock_env_permissions_adopts_permissive_regular_file(self):
+        info = os.stat_result((0o100644, 1, 1, 1, 1000, 1000, 12, 0, 0, 0))
+        locked = os.stat_result((0o100600, 1, 1, 1, 0, 0, 12, 0, 0, 0))
+        with mock.patch.object(self.module.os, "fstat", side_effect=[info, locked]), \
+                mock.patch.object(self.module.os, "fchown") as fchown, \
+                mock.patch.object(self.module.os, "fchmod") as fchmod:
+            self.module._lock_env_permissions(7)
+        fchown.assert_called_once_with(7, 0, 0)
+        fchmod.assert_called_once_with(7, 0o600)
+
+    def test_lock_env_permissions_skips_matching_root_0600(self):
+        info = os.stat_result((0o100600, 1, 1, 1, 0, 0, 12, 0, 0, 0))
+        with mock.patch.object(self.module.os, "fstat", return_value=info), \
+                mock.patch.object(self.module.os, "fchown") as fchown, \
+                mock.patch.object(self.module.os, "fchmod") as fchmod:
+            self.module._lock_env_permissions(7)
+        fchown.assert_not_called()
+        fchmod.assert_not_called()
+
+    def test_lock_env_permissions_rejects_non_regular(self):
+        info = os.stat_result((0o040755, 1, 1, 1, 0, 0, 12, 0, 0, 0))
+        with mock.patch.object(self.module.os, "fstat", return_value=info):
+            with self.assertRaisesRegex(ValueError, "must be a regular file"):
+                self.module._lock_env_permissions(7)
+
     def test_validates_public_base_url(self):
         self.assertEqual(self.module.validate_public_url("https://edge.example.com"), "https://edge.example.com")
         for value in ("http://edge.example.com", "https://edge.example.com/path", "https://user@edge.example.com", "https://127.0.0.1"):

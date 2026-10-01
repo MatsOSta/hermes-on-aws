@@ -42,6 +42,22 @@ def validate_public_url(value: str) -> str:
     return f"https://{parsed.hostname.lower()}"
 
 
+def _lock_env_permissions(fd: int) -> None:
+    opened = os.fstat(fd)
+    if not stat.S_ISREG(opened.st_mode):
+        raise ValueError("Hermes environment file must be a regular file")
+    if opened.st_uid == 0 and stat.S_IMODE(opened.st_mode) == 0o600:
+        return
+    try:
+        os.fchown(fd, 0, 0)
+        os.fchmod(fd, 0o600)
+    except OSError as exc:
+        raise ValueError("Hermes environment file must be a root-owned regular file with mode 0600") from exc
+    opened = os.fstat(fd)
+    if opened.st_uid != 0 or not stat.S_ISREG(opened.st_mode) or stat.S_IMODE(opened.st_mode) != 0o600:
+        raise ValueError("Hermes environment file must be a root-owned regular file with mode 0600")
+
+
 def _read_env(path: Path) -> tuple[list[str], dict[str, str]]:
     if path.is_symlink():
         raise ValueError("refusing symlinked Hermes environment file")
@@ -50,9 +66,8 @@ def _read_env(path: Path) -> tuple[list[str], dict[str, str]]:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags)
     try:
+        _lock_env_permissions(fd)
         opened = os.fstat(fd)
-        if not stat.S_ISREG(opened.st_mode) or opened.st_uid != 0 or stat.S_IMODE(opened.st_mode) != 0o600:
-            raise ValueError("Hermes environment file must be a root-owned regular file with mode 0600")
         if opened.st_size > 1024 * 1024:
             raise ValueError("Hermes environment file is unexpectedly large")
         chunks: list[bytes] = []

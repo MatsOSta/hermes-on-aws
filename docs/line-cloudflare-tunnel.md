@@ -50,9 +50,10 @@ Scope it to only the intended Cloudflare account and DNS zone, with exactly:
 - **Zone / Zone / Read** for the intended zone.
 
 Do not grant account-wide DNS access, other account permissions, or access to
-all zones. Copy the account ID and zone ID; they are prompted for remotely and
-are not credentials. Enter the API token only at the hidden prompt described
-below. Revoke this temporary API token after a successful run and read-back.
+all zones. Enter the DNS zone name and the API token only at the remote prompts
+described below. The helper resolves account and zone IDs from
+`GET /zones?name=<zone>` and fails closed if that lookup is not exactly one
+match. Revoke this temporary API token after a successful run and read-back.
 
 ## Create or verify the remote tunnel and route
 
@@ -63,13 +64,18 @@ Start the Hermes gateway first, then run from the operator workstation:
 ```
 
 The command opens an interactive SSM session and prompts on the instance for the
-account ID, zone ID, zone name, and scoped API token. It creates one remotely
+zone name and scoped API token. It creates one remotely
 managed tunnel named from the opaque deployment ID and an opaque hostname of
 the form `edge-<random>.<zone>`. Its only published application service is:
 
 ```text
 http://hermes-gateway:8646
 ```
+
+LINE listens on gateway port 8646. Port 8642 is the loopback API, not LINE.
+Ingress to 8642 yields a public 502. A published route whose only difference is
+that mistaken 8642 origin is replaced on rerun; any other hostname-bearing or
+WARP-enabled config still fails closed.
 
 The command reads back the tunnel, ingress configuration, and proxied CNAME
 exactly before reporting success. Matching state is retained on rerun. A

@@ -48,6 +48,12 @@ class ConfigureTunnelTests(unittest.TestCase):
             {"hostname": HOST, "service": "http://hermes-gateway:8646"},
             {"service": "http_status:404"},
         ])
+        self.assertTrue(self.module._config_is_legacy_gateway_port({"config": {
+            "ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8642"},
+                {"service": "http_status:404"},
+            ],
+        }}, HOST))
         self.assertEqual(self.module.desired_dns(TUNNEL, HOST), {
             "type": "CNAME", "name": HOST,
             "content": f"{TUNNEL}.cfargotunnel.com",
@@ -57,6 +63,55 @@ class ConfigureTunnelTests(unittest.TestCase):
             "ingress": self.module.desired_ingress(HOST),
             "warp-routing": {"enabled": True},
         }}, HOST))
+
+    def test_default_catchall_config_is_empty(self):
+        self.assertTrue(self.module._config_is_empty({}))
+        self.assertTrue(self.module._config_is_empty({"config": {}}))
+        self.assertTrue(self.module._config_is_empty({"config": {
+            "ingress": [{"service": "http_status:404", "originRequest": {"connectTimeout": 30}}],
+            "originRequest": {"keepAliveConnections": 100},
+            "warp-routing": {"enabled": False},
+        }}))
+        self.assertTrue(self.module._config_matches({"config": {
+            "ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8646", "originRequest": {"connectTimeout": 30}},
+                {"service": "http_status:404", "path": ""},
+            ],
+            "originRequest": {"keepAliveConnections": 100},
+        }}, HOST))
+        self.assertFalse(self.module._config_is_empty({"config": {
+            "ingress": [{"hostname": HOST, "service": "http://wrong:80"}, {"service": "http_status:404"}],
+        }}))
+        self.assertFalse(self.module._config_is_empty({"config": {
+            "ingress": [{"service": "http_status:404"}],
+            "warp-routing": {"enabled": True},
+        }}))
+
+    def test_resolve_zone_requires_exactly_one_match(self):
+        zone = {"id": ZONE, "name": "example.com", "account": {"id": ACCOUNT}}
+        api = FakeAPI([[zone]])
+        self.assertEqual(self.module.resolve_zone(api, "example.com"), (ACCOUNT, ZONE))
+        self.assertEqual(api.calls, [("GET", "/zones", None, {"name": "example.com"})])
+        with self.assertRaisesRegex(RuntimeError, "ambiguous"):
+            self.module.resolve_zone(FakeAPI([[]]), "example.com")
+        with self.assertRaisesRegex(RuntimeError, "ambiguous"):
+            self.module.resolve_zone(FakeAPI([[zone, dict(zone)]]), "example.com")
+        with self.assertRaisesRegex(RuntimeError, "malformed"):
+            self.module.resolve_zone(
+                FakeAPI([[{"id": ZONE, "name": "other.com", "account": {"id": ACCOUNT}}]]),
+                "example.com",
+            )
+
+    def test_config_shape_redacts_values(self):
+        shape = self.module._config_shape({"config": {
+            "ingress": [{"hostname": "secret.example.com", "service": "http://127.0.0.1:9"}],
+            "warp-routing": {"enabled": True, "secret": "should-not-leak"},
+            "originRequest": {"httpHostHeader": "should-not-leak"},
+        }})
+        self.assertNotIn("should-not-leak", shape)
+        self.assertNotIn("secret.example.com", shape)
+        self.assertNotIn("127.0.0.1", shape)
+        self.assertIn("'enabled': True", shape)
 
     def test_creation_mutates_only_exact_resources_and_reads_back(self):
         tunnel = {
@@ -128,6 +183,39 @@ class ConfigureTunnelTests(unittest.TestCase):
             result = self.module.provision(api, DEPLOYMENT, ACCOUNT, ZONE, "example.com", state, lambda: "ffffffffffff")
         self.assertEqual(result["hostname"], HOST)
         self.assertFalse(any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, *_ in api.calls))
+
+    def test_legacy_8642_config_is_replaced(self):
+        state_data = {
+            "version": 1, "deployment_id": DEPLOYMENT, "account_id": ACCOUNT,
+            "zone_id": ZONE, "zone_name": "example.com", "tunnel_id": TUNNEL,
+            "tunnel_name": f"hermes-{DEPLOYMENT}", "hostname": HOST,
+        }
+        ingress = self.module.desired_ingress(HOST)
+        replies = [
+            {"status": "active"},
+            {"id": ZONE, "name": "example.com", "account": {"id": ACCOUNT}},
+            [{"id": TUNNEL, "name": f"hermes-{DEPLOYMENT}", "account_tag": ACCOUNT, "config_src": "cloudflare", "deleted_at": None}],
+            {"id": TUNNEL, "name": f"hermes-{DEPLOYMENT}", "account_tag": ACCOUNT, "config_src": "cloudflare", "deleted_at": None},
+            "connector-token-value-123",
+            {"config": {"ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8642"},
+                {"service": "http_status:404"},
+            ]}},
+            [dict(self.module.desired_dns(TUNNEL, HOST), id="dns-id")],
+            {},
+            {"config": {"ingress": ingress}},
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state.json"
+            self.module.write_state(state, state_data)
+            api = FakeAPI(replies)
+            result = self.module.provision(api, DEPLOYMENT, ACCOUNT, ZONE, "example.com", state, lambda: "ffffffffffff")
+        self.assertEqual(result["hostname"], HOST)
+        self.assertEqual([call for call in api.calls if call[0] in {"POST", "PUT", "PATCH", "DELETE"}], [
+            ("PUT", f"/accounts/{ACCOUNT}/cfd_tunnel/{TUNNEL}/configurations", {
+                "config": {"ingress": ingress},
+            }, None),
+        ])
 
     def test_conflicting_existing_config_stops_without_mutation(self):
         state_data = {
@@ -205,6 +293,21 @@ class ConfigureTunnelTests(unittest.TestCase):
                     lambda: "ffffffffffff",
                 )
         self.assertFalse(any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, *_ in api.calls))
+
+    def test_verify_storage_accepts_install_mount_options(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,nodev,relatime,seclabel\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            self.module.verify_storage("vol-0123456789abcdef0")
+
+    def test_verify_storage_rejects_missing_nodev(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,relatime\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            with self.assertRaisesRegex(RuntimeError, "mount options are unsafe"):
+                self.module.verify_storage("vol-0123456789abcdef0")
 
     def test_token_write_is_owner_only_and_mismatch_is_retained(self):
         with tempfile.TemporaryDirectory() as directory:

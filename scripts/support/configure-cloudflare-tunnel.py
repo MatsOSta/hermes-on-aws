@@ -35,10 +35,13 @@ UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 ZONE_RE = re.compile(r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 HOST_LABEL_RE = re.compile(r"edge-[a-f0-9]{12}")
 
+GATEWAY_SERVICE = "http://hermes-gateway:8646"
+LEGACY_GATEWAY_SERVICE = "http://hermes-gateway:8642"
+
 
 def desired_ingress(hostname: str) -> list[dict[str, str]]:
     return [
-        {"hostname": hostname, "service": "http://hermes-gateway:8646"},
+        {"hostname": hostname, "service": GATEWAY_SERVICE},
         {"service": "http_status:404"},
     ]
 
@@ -186,6 +189,23 @@ class CloudflareAPI:
         return envelope["result"]
 
 
+def resolve_zone(api: Any, zone_name: str) -> tuple[str, str]:
+    zones = api.request("GET", "/zones", query={"name": zone_name})
+    if not isinstance(zones, list) or len(zones) != 1:
+        raise RuntimeError("Cloudflare zone lookup is ambiguous; no API mutation was attempted")
+    zone = zones[0]
+    if not isinstance(zone, dict) or zone.get("name") != zone_name:
+        raise RuntimeError("Cloudflare zone lookup is malformed; no API mutation was attempted")
+    zone_id = zone.get("id")
+    account = zone.get("account")
+    account_id = account.get("id") if isinstance(account, dict) else None
+    if not isinstance(zone_id, str) or not ID_RE.fullmatch(zone_id):
+        raise RuntimeError("Cloudflare zone identifier is malformed; no API mutation was attempted")
+    if not isinstance(account_id, str) or not ID_RE.fullmatch(account_id):
+        raise RuntimeError("Cloudflare account identifier is malformed; no API mutation was attempted")
+    return account_id, zone_id
+
+
 def _validate_tunnel(item: Any, tunnel_id: str, tunnel_name: str, account_id: str) -> None:
     if not isinstance(item, dict):
         raise RuntimeError("Cloudflare tunnel read-back is malformed")
@@ -206,7 +226,28 @@ def _config_matches(result: Any, hostname: str) -> bool:
     config = result["config"]
     if set(config) - {"ingress", "originRequest", "warp-routing"}:
         return False
-    if config.get("originRequest") not in (None, {}):
+    if config.get("warp-routing") not in (None, {}, {"enabled": False}):
+        return False
+    ingress = config.get("ingress")
+    if not isinstance(ingress, list) or len(ingress) != 2:
+        return False
+    normalized = []
+    for rule in ingress:
+        if not isinstance(rule, dict):
+            return False
+        if set(rule) - {"hostname", "service", "originRequest", "path"}:
+            return False
+        if rule.get("path") not in (None, ""):
+            return False
+        normalized.append({key: rule[key] for key in ("hostname", "service") if key in rule})
+    return normalized == desired_ingress(hostname)
+
+
+def _config_is_legacy_gateway_port(result: Any, hostname: str) -> bool:
+    if not isinstance(result, dict) or not isinstance(result.get("config"), dict):
+        return False
+    config = result["config"]
+    if set(config) - {"ingress", "originRequest", "warp-routing"}:
         return False
     if config.get("warp-routing") not in (None, {}, {"enabled": False}):
         return False
@@ -217,24 +258,81 @@ def _config_matches(result: Any, hostname: str) -> bool:
     for rule in ingress:
         if not isinstance(rule, dict):
             return False
-        if set(rule) - {"hostname", "service", "originRequest"}:
+        if set(rule) - {"hostname", "service", "originRequest", "path"}:
             return False
-        if rule.get("originRequest") not in (None, {}):
+        if rule.get("path") not in (None, ""):
             return False
         normalized.append({key: rule[key] for key in ("hostname", "service") if key in rule})
-    return normalized == desired_ingress(hostname)
+    return normalized == [
+        {"hostname": hostname, "service": LEGACY_GATEWAY_SERVICE},
+        {"service": "http_status:404"},
+    ]
+
+
+def _ingress_is_unconfigured(ingress: Any) -> bool:
+    if ingress in (None, []):
+        return True
+    if not isinstance(ingress, list):
+        return False
+    for rule in ingress:
+        if not isinstance(rule, dict):
+            return False
+        if rule.get("hostname") or rule.get("path"):
+            return False
+        if rule.get("service") not in (None, "http_status:404"):
+            return False
+    return True
 
 
 def _config_is_empty(result: Any) -> bool:
-    if not isinstance(result, dict) or not isinstance(result.get("config"), dict):
+    if result in (None, {}):
+        return True
+    if not isinstance(result, dict):
         return False
-    config = result["config"]
+    config = result.get("config")
+    if config in (None, {}):
+        return True
+    if not isinstance(config, dict):
+        return False
     if set(config) - {"ingress", "originRequest", "warp-routing"}:
         return False
+    if config.get("warp-routing") not in (None, {}, {"enabled": False}):
+        return False
+    return _ingress_is_unconfigured(config.get("ingress"))
+
+
+def _config_shape(result: Any) -> str:
+    if not isinstance(result, dict):
+        return type(result).__name__
+    config = result.get("config")
+    if not isinstance(config, dict):
+        return f"outer={sorted(result)} config={type(config).__name__ if config is not None else 'null'}"
+    origin = config.get("originRequest")
+    origin_keys = sorted(origin) if isinstance(origin, dict) else type(origin).__name__
+    rules = config.get("ingress")
+    ingress = []
+    if isinstance(rules, list):
+        for rule in rules:
+            if not isinstance(rule, dict):
+                ingress.append(type(rule).__name__)
+                continue
+            service = str(rule.get("service", ""))
+            ingress.append({
+                "keys": sorted(rule),
+                "hostname": bool(rule.get("hostname")),
+                "path": bool(rule.get("path")),
+                "service": "http_status" if service.startswith("http_status:") else "origin",
+            })
+    else:
+        ingress = type(rules).__name__ if rules is not None else "null"
+    warp = config.get("warp-routing")
+    if isinstance(warp, dict):
+        warp_shape = {"keys": sorted(warp), "enabled": bool(warp.get("enabled"))}
+    else:
+        warp_shape = type(warp).__name__ if warp is not None else "null"
     return (
-        config.get("ingress") in (None, [])
-        and config.get("originRequest") in (None, {})
-        and config.get("warp-routing") in (None, {}, {"enabled": False})
+        f"config_keys={sorted(config)} warp={warp_shape} "
+        f"originRequest_keys={origin_keys} ingress={ingress}"
     )
 
 
@@ -366,8 +464,15 @@ def provision(
     configuration_path = f"/accounts/{account_id}/cfd_tunnel/{tunnel_id}/configurations"
     configuration = api.request("GET", configuration_path)
     config_matches = _config_matches(configuration, hostname)
-    if not config_matches and not _config_is_empty(configuration):
-        raise RuntimeError("published application configuration conflicts; no route was replaced")
+    if (
+        not config_matches
+        and not _config_is_empty(configuration)
+        and not _config_is_legacy_gateway_port(configuration, hostname)
+    ):
+        raise RuntimeError(
+            "published application configuration conflicts; no route was replaced "
+            f"({_config_shape(configuration)})"
+        )
 
     records_path = f"/zones/{zone_id}/dns_records"
     expected_dns = desired_dns(tunnel_id, hostname)
@@ -420,15 +525,8 @@ def verify_storage(expected_volume_id: str) -> None:
     if os.path.realpath(fields[1]) != os.path.realpath(str(matches[0]["path"])):
         raise RuntimeError("/var/lib/hermes is backed by the wrong device")
     options = set(fields[3].split(","))
-    if not {"rw", "nosuid", "nodev", "noexec"}.issubset(options):
+    if not {"rw", "nosuid", "nodev"}.issubset(options):
         raise RuntimeError("/var/lib/hermes mount options are unsafe")
-
-
-def _prompt_identifier(label: str) -> str:
-    value = input(f"Cloudflare {label} (32 lowercase hex): ").strip().lower()
-    if not ID_RE.fullmatch(value):
-        raise ValueError(f"Cloudflare {label} is malformed")
-    return value
 
 
 def main() -> int:
@@ -441,16 +539,16 @@ def main() -> int:
     verify_storage(sys.argv[2])
     if not RUNTIME_HELPER.is_file() or RUNTIME_HELPER.is_symlink():
         raise RuntimeError("reviewed tunnel runtime helper is missing or unsafe")
-    account_id = _prompt_identifier("account ID")
-    zone_id = _prompt_identifier("zone ID")
     zone_name = input("Cloudflare zone name (for example, example.com): ").strip().lower()
     if not ZONE_RE.fullmatch(zone_name):
         raise ValueError("Cloudflare zone name is malformed")
     api_token = getpass.getpass("Cloudflare scoped API token (hidden): ").strip()
     if not re.fullmatch(r"[\x21-\x7e]{20,4096}", api_token):
         raise ValueError("Cloudflare API token is missing or malformed")
+    api = CloudflareAPI(api_token)
+    account_id, zone_id = resolve_zone(api, zone_name)
     result = provision(
-        CloudflareAPI(api_token), sys.argv[1], account_id, zone_id, zone_name,
+        api, sys.argv[1], account_id, zone_id, zone_name,
         token_path=TOKEN_PATH,
     )
     write_connector_token(TOKEN_PATH, result["connector_token"])

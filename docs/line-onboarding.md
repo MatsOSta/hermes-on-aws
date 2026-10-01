@@ -56,7 +56,7 @@ is not a replacement for the detailed procedures below.
    Official Account name and its link or QR code. Explain that the first
    enrollment message is only for discovery and may receive no Hermes reply
    under the current pinned behavior.
-3. Use the [current first-user discovery and authorization procedure](#7-discover-and-authorize-the-first-user). Confirm the sender's identity before
+3. Use the [current first-user discovery and authorization procedure](#8-discover-and-authorize-the-first-user). Confirm the sender's identity before
    appending the provider-scoped ID; do not use `LINE_ALLOW_ALL_USERS`, replace
    existing allowlist entries, or use the unavailable pairing flow.
 4. Complete the required gateway restart and health check in that section.
@@ -112,9 +112,10 @@ linked above; do not improvise an operator step.
 
 1. Deploy the host and install the pinned Hermes image.
 2. Create a LINE Messaging API channel and issue its credentials.
-3. Configure the LINE platform in Hermes.
-4. Create a Cloudflare named tunnel and public hostname.
-5. Route that hostname to `http://hermes-gateway:8646`.
+3. Create a Cloudflare named tunnel and public hostname.
+4. Route that hostname to `http://hermes-gateway:8646`.
+5. Configure the LINE platform in Hermes (`configure-line`), then recreate the
+   gateway and start the tunnel so LINE binds 8646.
 6. Configure, verify, and enable LINE's webhook.
 7. Disable LINE greeting and automatic responses.
 8. Complete live connectivity and restart/recovery acceptance.
@@ -280,7 +281,8 @@ Run the bounded provisioning phase:
 
 Before the run, issue a temporary API token scoped only to the intended account
 and zone with **Account / Cloudflare Tunnel / Edit**, **Zone / DNS / Edit**, and
-**Zone / Zone / Read**. Enter it only at the remote hidden prompt. The command
+**Zone / Zone / Read**. Enter the DNS zone name and that token only at the remote
+prompts; account and zone IDs are resolved from the API. The command
 generates an opaque hostname, creates or verifies the dedicated remotely managed
 tunnel, exact ingress and proxied CNAME, stores the connector credential directly
 on the encrypted data volume, and starts the connector through the existing
@@ -300,7 +302,38 @@ host-port publication. See
 [line-cloudflare-tunnel.md](line-cloudflare-tunnel.md#create-or-verify-the-remote-tunnel-and-route)
 for conflict, rerun, credential rotation, revocation, and recovery boundaries.
 
-## 5. Verify public health
+Do not re-enter the Cloudflare token to debug the next fail-closed check. Inspect
+the data-volume mount (`rw,nosuid,nodev`), origin containers, and published
+ingress first. Helpers that still require `noexec` are on the wrong branch.
+
+## 5. Configure LINE, then recreate the gateway
+
+After the tunnel hostname exists, run:
+
+```sh
+./hermes.sh configure-line "$DEPLOYMENT_ID"
+```
+
+Enter channel token and secret at the hidden prompts. `LINE_PUBLIC_URL` is the
+visible prompt, not a `hermes.sh` flag: `https://<edge-hex>.<zone>` with no path.
+Matching rerun is safe once those values are written. Do not re-prompt them to
+debug docker or health.
+
+`configure-line` does not restart `hermes-gateway`. LINE binds 8646 only after
+the gateway is recreated with LINE enabled:
+
+```sh
+./hermes.sh start-gateway "$DEPLOYMENT_ID" --recreate
+./hermes.sh start-tunnel "$DEPLOYMENT_ID"
+```
+
+Port 8642 is the loopback API. Public health after LINE enable is
+`/line/webhook/health`. A 502 here usually means ingress still points at 8642.
+
+Do not cat `/var/lib/hermes/.env`. The helper adopts a gateway-created `.env`
+onto root mode 0600 and does not require `/var/lib/hermes` itself to be uid 0.
+
+## 6. Verify public health
 
 From the operator workstation:
 
@@ -315,7 +348,7 @@ curl --fail --silent --show-error \
 Require HTTP 200 and the LINE health response. This proves the public route, but
 not LINE signature validation or user authorization.
 
-## 6. Configure and enable LINE's webhook
+## 7. Configure and enable LINE's webhook
 
 In **LINE Developers Console -> channel -> Messaging API -> Webhook settings**:
 
@@ -334,7 +367,7 @@ In **LINE Developers Console -> channel -> Messaging API -> Webhook settings**:
 The webhook endpoint is `/line/webhook`. `/line/webhook/health` is only the
 operator health endpoint.
 
-## 7. Discover and authorize the first user
+## 8. Discover and authorize the first user
 
 ### Preferred current method for the channel developer
 

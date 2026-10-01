@@ -19,6 +19,45 @@ class ConfigureLineTests(unittest.TestCase):
         cls.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.module)
 
+    def test_lock_env_permissions_adopts_permissive_regular_file(self):
+        info = os.stat_result((0o100644, 1, 1, 1, 1000, 1000, 12, 0, 0, 0))
+        locked = os.stat_result((0o100600, 1, 1, 1, 0, 0, 12, 0, 0, 0))
+        with mock.patch.object(self.module.os, "fstat", side_effect=[info, locked]), \
+                mock.patch.object(self.module.os, "fchown") as fchown, \
+                mock.patch.object(self.module.os, "fchmod") as fchmod:
+            self.module._lock_env_permissions(7)
+        fchown.assert_called_once_with(7, 0, 0)
+        fchmod.assert_called_once_with(7, 0o600)
+
+    def test_lock_env_permissions_skips_matching_root_0600(self):
+        info = os.stat_result((0o100600, 1, 1, 1, 0, 0, 12, 0, 0, 0))
+        with mock.patch.object(self.module.os, "fstat", return_value=info), \
+                mock.patch.object(self.module.os, "fchown") as fchown, \
+                mock.patch.object(self.module.os, "fchmod") as fchmod:
+            self.module._lock_env_permissions(7)
+        fchown.assert_not_called()
+        fchmod.assert_not_called()
+
+    def test_lock_env_permissions_rejects_non_regular(self):
+        info = os.stat_result((0o040755, 1, 1, 1, 0, 0, 12, 0, 0, 0))
+        with mock.patch.object(self.module.os, "fstat", return_value=info):
+            with self.assertRaisesRegex(ValueError, "must be a regular file"):
+                self.module._lock_env_permissions(7)
+
+    def test_update_env_accepts_non_root_data_dir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            requested = {
+                "LINE_CHANNEL_ACCESS_TOKEN": "token-value-1234567890",
+                "LINE_CHANNEL_SECRET": "a" * 32,
+                "LINE_PUBLIC_URL": "https://edge.example.com",
+            }
+            with mock.patch.object(self.module, "_read_env", return_value=([], {})):
+                self.module.update_env(path, requested)
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("LINE_PUBLIC_URL=https://edge.example.com\n", text)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_validates_public_base_url(self):
         self.assertEqual(self.module.validate_public_url("https://edge.example.com"), "https://edge.example.com")
         for value in ("http://edge.example.com", "https://edge.example.com/path", "https://user@edge.example.com", "https://127.0.0.1"):
@@ -30,7 +69,8 @@ class ConfigureLineTests(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text("MODEL_KEY=keep\nLINE_CHANNEL_SECRET=old\n", encoding="utf-8")
             os.chmod(path, 0o600)
-            self.module.update_env(path, {"LINE_CHANNEL_SECRET": "old", "LINE_CHANNEL_ACCESS_TOKEN": "token", "LINE_PUBLIC_URL": "https://edge.example.com"})
+            with mock.patch.object(self.module, "_lock_env_permissions"):
+                self.module.update_env(path, {"LINE_CHANNEL_SECRET": "old", "LINE_CHANNEL_ACCESS_TOKEN": "token", "LINE_PUBLIC_URL": "https://edge.example.com"})
             text = path.read_text(encoding="utf-8")
             self.assertIn("MODEL_KEY=keep\n", text)
             self.assertEqual(text.count("LINE_CHANNEL_SECRET="), 1)
@@ -42,7 +82,8 @@ class ConfigureLineTests(unittest.TestCase):
             path.write_text("LINE_CHANNEL_SECRET=existing-secret\n", encoding="utf-8")
             os.chmod(path, 0o600)
             with self.assertRaisesRegex(ValueError, "conflicting existing LINE_CHANNEL_SECRET") as caught:
-                self.module.update_env(path, {"LINE_CHANNEL_SECRET": "different-secret"})
+                with mock.patch.object(self.module, "_lock_env_permissions"):
+                    self.module.update_env(path, {"LINE_CHANNEL_SECRET": "different-secret"})
             self.assertNotIn("existing-secret", str(caught.exception))
             self.assertNotIn("different-secret", str(caught.exception))
 
@@ -51,6 +92,21 @@ class ConfigureLineTests(unittest.TestCase):
         findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme2n1 xfs rw,nosuid,nodev,noexec\n")
         with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]):
             with self.assertRaisesRegex(RuntimeError, "wrong device"):
+                self.module.verify_storage("vol-0123456789abcdef0")
+
+    def test_verify_storage_accepts_install_mount_options(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,nodev,relatime,seclabel\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            self.module.verify_storage("vol-0123456789abcdef0")
+
+    def test_verify_storage_rejects_missing_nodev(self):
+        lsblk = mock.Mock(stdout='{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"vol0123456789abcdef0"}]}')
+        findmnt = mock.Mock(stdout="/var/lib/hermes /dev/nvme1n1 xfs rw,nosuid,relatime\n")
+        with mock.patch.object(self.module.subprocess, "run", side_effect=[lsblk, findmnt]), \
+                mock.patch.object(self.module.os.path, "realpath", side_effect=lambda path: path):
+            with self.assertRaisesRegex(RuntimeError, "mount options are unsafe"):
                 self.module.verify_storage("vol-0123456789abcdef0")
 
     def test_webhook_write_is_read_back_before_test(self):

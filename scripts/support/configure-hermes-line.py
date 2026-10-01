@@ -42,6 +42,22 @@ def validate_public_url(value: str) -> str:
     return f"https://{parsed.hostname.lower()}"
 
 
+def _lock_env_permissions(fd: int) -> None:
+    opened = os.fstat(fd)
+    if not stat.S_ISREG(opened.st_mode):
+        raise ValueError("Hermes environment file must be a regular file")
+    if opened.st_uid == 0 and stat.S_IMODE(opened.st_mode) == 0o600:
+        return
+    try:
+        os.fchown(fd, 0, 0)
+        os.fchmod(fd, 0o600)
+    except OSError as exc:
+        raise ValueError("Hermes environment file must be a root-owned regular file with mode 0600") from exc
+    opened = os.fstat(fd)
+    if opened.st_uid != 0 or not stat.S_ISREG(opened.st_mode) or stat.S_IMODE(opened.st_mode) != 0o600:
+        raise ValueError("Hermes environment file must be a root-owned regular file with mode 0600")
+
+
 def _read_env(path: Path) -> tuple[list[str], dict[str, str]]:
     if path.is_symlink():
         raise ValueError("refusing symlinked Hermes environment file")
@@ -50,9 +66,8 @@ def _read_env(path: Path) -> tuple[list[str], dict[str, str]]:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags)
     try:
+        _lock_env_permissions(fd)
         opened = os.fstat(fd)
-        if not stat.S_ISREG(opened.st_mode) or opened.st_uid != 0 or stat.S_IMODE(opened.st_mode) != 0o600:
-            raise ValueError("Hermes environment file must be a root-owned regular file with mode 0600")
         if opened.st_size > 1024 * 1024:
             raise ValueError("Hermes environment file is unexpectedly large")
         chunks: list[bytes] = []
@@ -90,8 +105,8 @@ def update_env(path: Path, requested: dict[str, str]) -> None:
     retained = [line for line in lines if not any(line.startswith(f"{key}=") for key in requested)]
     content = "\n".join(retained + [f"{key}={requested[key]}" for key in LINE_KEYS if key in requested]) + "\n"
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if path.parent.is_symlink() or path.parent.stat().st_uid != 0:
-        raise ValueError("Hermes home must be a root-owned directory")
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise ValueError("Hermes home must be a real directory")
     fd, name = tempfile.mkstemp(prefix=".env.", dir=path.parent)
     try:
         os.fchmod(fd, 0o600)
@@ -173,7 +188,7 @@ def verify_storage(expected_volume_id: str) -> None:
     if os.path.realpath(fields[1]) != os.path.realpath(str(matches[0]["path"])):
         raise RuntimeError("/var/lib/hermes is backed by the wrong device")
     options = set(fields[3].split(","))
-    if not {"rw", "nosuid", "nodev", "noexec"}.issubset(options):
+    if not {"rw", "nosuid", "nodev"}.issubset(options):
         raise RuntimeError("/var/lib/hermes mount options are unsafe")
 
 

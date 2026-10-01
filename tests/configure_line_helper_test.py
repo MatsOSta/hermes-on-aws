@@ -69,7 +69,8 @@ class ConfigureLineTests(unittest.TestCase):
             path = Path(directory) / ".env"
             path.write_text("MODEL_KEY=keep\nLINE_CHANNEL_SECRET=old\n", encoding="utf-8")
             os.chmod(path, 0o600)
-            self.module.update_env(path, {"LINE_CHANNEL_SECRET": "old", "LINE_CHANNEL_ACCESS_TOKEN": "token", "LINE_PUBLIC_URL": "https://edge.example.com"})
+            with mock.patch.object(self.module, "_lock_env_permissions"):
+                self.module.update_env(path, {"LINE_CHANNEL_SECRET": "old", "LINE_CHANNEL_ACCESS_TOKEN": "token", "LINE_PUBLIC_URL": "https://edge.example.com"})
             text = path.read_text(encoding="utf-8")
             self.assertIn("MODEL_KEY=keep\n", text)
             self.assertEqual(text.count("LINE_CHANNEL_SECRET="), 1)
@@ -81,7 +82,8 @@ class ConfigureLineTests(unittest.TestCase):
             path.write_text("LINE_CHANNEL_SECRET=existing-secret\n", encoding="utf-8")
             os.chmod(path, 0o600)
             with self.assertRaisesRegex(ValueError, "conflicting existing LINE_CHANNEL_SECRET") as caught:
-                self.module.update_env(path, {"LINE_CHANNEL_SECRET": "different-secret"})
+                with mock.patch.object(self.module, "_lock_env_permissions"):
+                    self.module.update_env(path, {"LINE_CHANNEL_SECRET": "different-secret"})
             self.assertNotIn("existing-secret", str(caught.exception))
             self.assertNotIn("different-secret", str(caught.exception))
 

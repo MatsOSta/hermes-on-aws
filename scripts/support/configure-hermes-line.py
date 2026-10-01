@@ -105,8 +105,8 @@ def update_env(path: Path, requested: dict[str, str]) -> None:
     retained = [line for line in lines if not any(line.startswith(f"{key}=") for key in requested)]
     content = "\n".join(retained + [f"{key}={requested[key]}" for key in LINE_KEYS if key in requested]) + "\n"
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if path.parent.is_symlink() or path.parent.stat().st_uid != 0:
-        raise ValueError("Hermes home must be a root-owned directory")
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise ValueError("Hermes home must be a real directory")
     fd, name = tempfile.mkstemp(prefix=".env.", dir=path.parent)
     try:
         os.fchmod(fd, 0o600)

@@ -45,9 +45,15 @@ class ConfigureTunnelTests(unittest.TestCase):
 
     def test_resource_fixture_has_one_service_and_fail_closed_catchall(self):
         self.assertEqual(self.module.desired_ingress(HOST), [
-            {"hostname": HOST, "service": "http://hermes-gateway:8646"},
+            {"hostname": HOST, "service": "http://hermes-gateway:8642"},
             {"service": "http_status:404"},
         ])
+        self.assertTrue(self.module._config_is_legacy_gateway_port({"config": {
+            "ingress": [
+                {"hostname": HOST, "service": "http://hermes-gateway:8646"},
+                {"service": "http_status:404"},
+            ],
+        }}, HOST))
         self.assertEqual(self.module.desired_dns(TUNNEL, HOST), {
             "type": "CNAME", "name": HOST,
             "content": f"{TUNNEL}.cfargotunnel.com",

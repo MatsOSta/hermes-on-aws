@@ -68,7 +68,7 @@ managed tunnel named from the opaque deployment ID and an opaque hostname of
 the form `edge-<random>.<zone>`. Its only published application service is:
 
 ```text
-http://hermes-gateway:8646
+http://hermes-gateway:8642
 ```
 
 The command reads back the tunnel, ingress configuration, and proxied CNAME
@@ -78,7 +78,7 @@ the command never deletes, rotates, adopts an unmanaged same-name tunnel, or
 replaces a conflicting route. State is root-owned mode `0600` under
 `/var/lib/hermes/cloudflare-tunnel/state.json`.
 
-Do not add an EC2 inbound security-group rule and do not publish port 8646 (or
+Do not add an EC2 inbound security-group rule and do not publish port 8642 (or
 any other container port) on the host. The LINE webhook URL will be
 `https://<host>/line/webhook`; the public health endpoint is
 `https://<host>/line/webhook/health`.
